@@ -1,4 +1,5 @@
 # CDR_workflow
+This is a WDL workflow to identify Centromere Dip Regions(CDRs)/Centromere Cores within the Active Alpha Sat Array. It does this by leveraging ONT's [modkit](https://github.com/nanoporetech/modkit) software to aggregate 5mC methylation encoded in MM/ML tags. This workflow and software was designed for use with HG002 Centomere Projects and the Human Pangenome Research Consortium's assemblies, to provide a highly accurate prediction for the CDR location. 
 
 #### WDL Workflow Inputs:
     Reference Fasta: Reference used for the BAM files alignment.    
@@ -50,5 +51,15 @@ usage: HMMCDRReferenceDetection.py [-h]
     --steps Maximum steps for Viterbi Learning [default 100]
 ```
 
-#### strict_scoring.sh    
+#### cdr_histogram.py
+Creates a histogram of the `modkit pileup` values within the H1L array. Colors values based on whether they fall within annotations from the HMM CDR bed9 file. 
+```
+
+```
+
+#### hmm_heatmaps.py
+Generates two heatmaps to represent the emission and transition matrices from HMM CDR predictions. 
+```
+
+```
 
