@@ -56,7 +56,7 @@ Creates a histogram of the `modkit pileup` values within the H1L array. Colors v
 ```
 usage: cdr_histogram.py [-h]  
     -i bed4 file containing modified CPG site probabilities [required]
-    -r bed file containing HMM CDR and Transition Region Predictions [required]
+    -r bed file containing HMM CDR and Transition Region Predictionsgit  [required]
     -o Output file [default 'histogram.png']
 ```
 
