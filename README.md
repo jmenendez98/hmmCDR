@@ -54,12 +54,18 @@ usage: HMMCDRReferenceDetection.py [-h]
 #### cdr_histogram.py
 Creates a histogram of the `modkit pileup` values within the H1L array. Colors values based on whether they fall within annotations from the HMM CDR bed9 file. 
 ```
-
+usage: cdr_histogram.py [-h]  
+    -i bed4 file containing modified CPG site probabilities [required]
+    -r bed file containing HMM CDR and Transition Region Predictions [required]
+    -o Output file [default 'histogram.png']
 ```
 
 #### hmm_heatmaps.py
 Generates two heatmaps to represent the emission and transition matrices from HMM CDR predictions. 
 ```
-
+usage: hmm_heatmaps.py [-h]  
+    -e Emmission matrix in .csv format from HMMCDRDetection.py [required]
+    -t Transition matrix in .csv format from HMMCDRDetection.py [required]
+    -o Output prefix [default 'hmm_heatmap']
 ```
 

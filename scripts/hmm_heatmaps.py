@@ -19,7 +19,8 @@ def main():
                         metavar="bed file containing estimate CDR Transition Regions",
                         help="bed file containing estimate CDR Transitions with chromosome, starting position and ending positon")
     parser.add_argument("-o", "--outputPrefix",
-                        required=True,
+                        required=False,
+                        default="hmm_heatmap",
                         metavar="output prefix",
                         help="The output prefix")
     
