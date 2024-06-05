@@ -1,0 +1,6 @@
+{
+  "CDR_Detection_Workflow.input_fasta": "<REF_FASTA>",
+  "CDR_Detection_Workflow.censat_bed": "<CENSAT_BED>",
+  "CDR_Detection_Workflow.mC_bam": "<5MC_BAM>",
+  "CDR_Detection_Workflow.sample_id": "<SAMPLE_ID>"
+}

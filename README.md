@@ -5,7 +5,7 @@ This is a WDL workflow to identify Centromere Dip Regions(CDRs)/Centromere Cores
     Reference Fasta: Reference used for the BAM files alignment.    
     Censat Bed: CenSat Track.    
     5mC Bam: BAM file containing 5mC tags in MM/ML form.     
-    Sample ID: Sample ID, used for output/intermediate file naming convention.    
+    Sample ID: Sample ID, string prefix used for output/intermediate file naming convention.    
 
 #### WDL Steps:
     1. Extract H1L
@@ -24,6 +24,9 @@ This is a WDL workflow to identify Centromere Dip Regions(CDRs)/Centromere Cores
     
     IGV tar.gz: Contains H1L intersected bedMethyls and Strict CDRs that HMM was trained on.
     Summary tag.gz: Contains png files for each contig of validation track pngs, heatmaps, and histograms.
+
+## Running the WDL:
+You can launch the WDL using files present in this repo. Using `cdr_detection.single_machine.wdl.sh` , `cdr_detection.wdl`, and an edited `inputs.json`. You can launch the CDR workflow with your own inputs. You will simply need to edit the `inputs.json` for your desired files. Then in an interactive session with at least 16 CPUs(For GI Private Cluster: `srun --job-name=interactive_medium --nodes=1 --cpus-per-task=16 --mem=256G --time=12:00:00 --partition=medium --pty bash`) then run `bash cdr_detection.single_machine.wdl.sh`. (Assumes you have `toil` installed/configured properly refer to: [giwiki/toil](https://giwiki.gi.ucsc.edu/index.php?title=Phoenix_WDL_Tutorial))
 
 ## Scripts:
 #### strict_scoring.sh    
