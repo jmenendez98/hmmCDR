@@ -26,7 +26,7 @@ This is a WDL workflow to identify Centromere Dip Regions(CDRs)/Centromere Cores
     Summary tag.gz: Contains png files for each contig of validation track pngs, heatmaps, and histograms.
 
 ## Running the WDL:
-You can launch the WDL using files present in this repo. Using `cdr_detection.single_machine.wdl.sh` , `cdr_detection.wdl`, and an edited `inputs.json`. You can launch the CDR workflow with your own inputs. You will simply need to edit the `inputs.json` for your desired files. Then in an interactive session with at least 16 CPUs(For GI Private Cluster: `srun --job-name=interactive_medium --nodes=1 --cpus-per-task=16 --mem=256G --time=12:00:00 --partition=medium --pty bash`) then run `bash cdr_detection.single_machine.wdl.sh`. (Assumes you have `toil` installed/configured properly refer to: [giwiki/toil](https://giwiki.gi.ucsc.edu/index.php?title=Phoenix_WDL_Tutorial))
+You can launch the WDL using files present in this repo. Using file in the [`wdl`](CDR_workflow/wdl) folder. You can launch the CDR workflow with your own inputs, by editing the `inputs.json` for your data. Then, in an interactive session with at least 16 CPUs(For GI Private Cluster: `srun --job-name=interactive_medium --nodes=1 --cpus-per-task=16 --mem=256G --time=12:00:00 --partition=medium --pty bash`), run `bash cdr_detection.single_machine.wdl.sh`. (Assumes you have `toil` installed/configured properly refer to: [giwiki/toil](https://giwiki.gi.ucsc.edu/index.php?title=Phoenix_WDL_Tutorial))
 
 ## Scripts:
 #### strict_scoring.sh    
