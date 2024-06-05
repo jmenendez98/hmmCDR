@@ -29,6 +29,9 @@ This is a WDL workflow to identify Centromere Dip Regions(CDRs)/Centromere Cores
 You can launch the WDL using files present in this repo. Using file in the [`wdl`](./wdl) folder. You can launch the CDR workflow with your own inputs, by editing the `inputs.json` for your data. Then, in an interactive session with at least 16 CPUs(For GI Private Cluster: `srun --job-name=interactive_medium --nodes=1 --cpus-per-task=16 --mem=256G --time=12:00:00 --partition=medium --pty bash`), run `bash cdr_detection.single_machine.wdl.sh`. (Assumes you have `toil` installed/configured properly refer to: [giwiki/toil](https://giwiki.gi.ucsc.edu/index.php?title=Phoenix_WDL_Tutorial))
 
 ## Scripts:
+
+### CDR Detection:
+
 #### strict_scoring.sh    
 Thank you [Mira Mastoras](https://github.com/miramastoras) for starting this automated [CDR Detection](https://github.com/miramastoras/CDR_detect/tree/main) work! This script processes a bed4 of the fraction_modified generated from a modkit pileup and generates a CDR prediction file based on scoring of windows. Scoring happens at each percentile in the range provided. Windows with the highest scores are labeled as CDRs and transitions. (Note: Requires bedtools)
 ```
@@ -54,6 +57,8 @@ usage: HMMCDRReferenceDetection.py [-h]
     --steps Maximum steps for Viterbi Learning [default 100]
 ```
 
+### HMM Validations:
+
 #### cdr_histogram.py
 Creates a histogram of the `modkit pileup` values within the H1L array. Colors values based on whether they fall within annotations from the HMM CDR bed9 file. 
 ```
@@ -71,4 +76,6 @@ usage: hmm_heatmaps.py [-h]
     -t Transition matrix in .csv format from HMMCDRDetection.py [required]
     -o Output prefix [default 'hmm_heatmap']
 ```
+
+
 
