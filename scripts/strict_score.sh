@@ -10,9 +10,9 @@ show_help() {
 	--window_size: Set the size of the scoring windows. [default 510]
     --low_percent: The starting percentile for scoring windows. [default 1]
     --high_percent: Optional. The ending percentile for scoring windows. [default 20]
-    --high-confidence: Cutoff for high confidence CDR score. Scores equal or above are high confidence. [default 17]
+    --high-confidence: Cutoff for high confidence CDR score. Scores equal or above are high confidence. [default 15]
     --med-confidence: Cutoff for medium confidence CDR score. Scores above are medium confidence. [default 10]
-    --low-confidence: Cutoff for low confidence CDR score. Scores above are low confidence. [default 5]"
+    --low-confidence: Cutoff for low confidence CDR score. Scores above are low confidence. [default 3]"
 }
 
 # Default values
@@ -126,15 +126,15 @@ done > tmpfile && mv tmpfile ${cdr_scores}
 sort -k 1,1 -k2,2n -o ${cdr_scores} ${cdr_scores}
 
 # Find the Strict High Confidence CDRs (merge nearby high confidence windows with this)
-awk 'BEGIN {OFS=FS="\t"} $4 >= 17 {print $1, $2, $3, $4}' ${cdr_scores} | \
+awk -v high_conf=$high_confidence 'BEGIN {OFS=FS="\t"} $4 >= high_conf {print $1, $2, $3, $4}' ${cdr_scores} | \
 	sort -k 1,1 -k2,2n - | \
-	bedtools merge -d 1001 -c 4 -o 'mean' -i - | \
+	bedtools merge -d $(echo "4 * $window_size + 1" | bc) -c 4 -o 'mean' -i - | \ 
 	awk 'BEGIN {OFS=FS="\t"} $3 - $2 >= 1750 {print $1, $2, $3, "strict_CDR", 0, ".", $2, $3, "0,0,255"}' | \
 	sort -k 1,1 -k2,2n - | \
 	awk '!seen[$0]++' > temp_cdrs.bed
 
 # Find the Strict Medium Confidence CDRs (only merge adjacent windows)
-awk 'BEGIN {OFS=FS="\t"} $4 > 10 {print $1, $2, $3, $4}' ${cdr_scores} | \
+awk -v med_conf=$med_confidence 'BEGIN {OFS=FS="\t"} $4 > med_conf {print $1, $2, $3, $4}' ${cdr_scores} | \
 	sort -k 1,1 -k2,2n - | \
 	bedtools merge -d 1 -c 4 -o 'mean' -i - | \
 	bedtools subtract -a - -b temp_cdrs.bed | \
@@ -143,9 +143,9 @@ awk 'BEGIN {OFS=FS="\t"} $4 > 10 {print $1, $2, $3, $4}' ${cdr_scores} | \
 	awk '!seen[$0]++' >> temp_cdrs.bed
 	
 # Find the Strict Transitions
-awk 'BEGIN {OFS=FS="\t"} $4 > 5 {print $1, $2, $3, $4}' ${cdr_scores} | \
+awk -v low_conf=$low_confidence 'BEGIN {OFS=FS="\t"} $4 > low_conf {print $1, $2, $3, $4}' ${cdr_scores} | \
 	sort -k 1,1 -k2,2n - | \
-	bedtools merge -d 1001 -c 4 -o 'mean' -i - | \
+	bedtools merge -d $(echo "2 * $window_size + 1" | bc) -c 4 -o 'mean' -i - | \
 	bedtools intersect -a - -b temp_cdrs.bed -wa | \
 	bedtools subtract -a - -b temp_cdrs.bed | \
 	awk 'BEGIN {OFS=FS="\t"} {print $1, $2, $3, "strict_Transition", 0, ".", $2, $3, "173,216,230"}' | \
