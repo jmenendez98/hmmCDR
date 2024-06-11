@@ -289,14 +289,14 @@ task strict_detect {
 	command <<<
 		set -eux -o pipefail
 
-		# need to write code to execute strict_scoring script
-		bash /opt/strict_score.sh \
+		bash /opt/strictCDRDetection.sh \
 			-i ~{pileup_bed} \
 			-r ~{censat_h1l_bed} \
 			-l 1 \
 			-h 20 \
 			-o "~{contig_name}_~{sample_id}"
 
+		# for handling cases in which H1L doesn't have CDR(mostly broken contigs)
 		touch ~{strict_cdr_bed_output}
 	>>>
 
@@ -308,7 +308,7 @@ task strict_detect {
 		memory: memSizeGB + " GB"
 		cpu: threadCount
 		disks: "local-disk " + diskSizeGB + " SSD"
-		docker: "jmmenend/cdr_detect:0.4.0"
+		docker: "jmmenend/cdr_detect:0.4.1"
 		preemptible: preempts
 	}
 }
@@ -338,7 +338,7 @@ task hmm_detect {
 		if [ -s ~{strict_bed} ]; then
 			# run the HMM with a VERY low learning rate maybe 1e-7?
 			python3 /opt/HMMCDRDetection.py -m \
-				-l 0.000000001 \
+				-l 0.0000001 \
 				-p ~{pileup_bed} \
 				-s ~{strict_bed} \
 				-o ~{viterbi_cdr_bed_output}
@@ -366,7 +366,7 @@ task hmm_detect {
 		memory: memSizeGB + " GB"
 		cpu: threadCount
 		disks: "local-disk " + diskSizeGB + " SSD"
-		docker: "jmmenend/cdr_detect:0.4.0"
+		docker: "jmmenend/cdr_detect:0.4.1"
 		preemptible: preempts
 	}
 }
@@ -446,7 +446,7 @@ task validate_cdrs {
 		memory: memSizeGB + " GB"
 		cpu: threadCount
 		disks: "local-disk " + diskSizeGB + " SSD"
-		docker: "jmmenend/cdr_detect:0.4.0"
+		docker: "jmmenend/cdr_detect:0.4.1"
 		preemptible: preempts
 	}
 }
