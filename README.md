@@ -32,29 +32,29 @@ You can launch the WDL using files present in this repo. Using file in the [`wdl
 
 ### CDR Detection:
 
-#### strict_scoring.sh    
+#### strictCDRDetection.sh    
 Thank you [Mira Mastoras](https://github.com/miramastoras) for starting this automated [CDR Detection](https://github.com/miramastoras/CDR_detect/tree/main) work! This script processes a bed4 of the fraction_modified generated from a modkit pileup and generates a CDR prediction file based on scoring of windows. Scoring happens at each percentile in the range provided. Windows with the highest scores are labeled as CDRs and transitions. (Note: Requires bedtools)
 ```
-usage: strict_score.sh [-h]
-    -i, --input: Input bed4 containing fraction_modified information from modkit pileup. [required]
-    -r, --hg002_merged_H1L: Bed Track of regions you want to find CDRs within. CDRs are identified by regions of aggregate depleted 5mC methylation [required]
-    -o, --output_prefix: A prefix for the output files. The output file will be named as <output_prefix>.strictScores.bed. [Required]
-    --low_percentage: The starting percentile for scoring windows. [default 1]
-    --high_percentage: Optional. The ending percentile for scoring windows. [default 20]
-    --high-confidence: Cutoff for high confidence CDR score. Scores equal or above are high confidence. [default 17]
-    --med-confidence: Cutoff for medium confidence CDR score. Scores above are medium confidence. [default 10]
-    --low-confidence: Cutoff for low confidence CDR score. Scores above are low confidence. [default 5]
+Usage: strict_cdr.sh [-h]
+    -i, --input: Modkit pileup bedgraph of fraction modified [Required]
+    -r, --hg002_merged_H1L: A BED file containing ONLY H1L(active-Alpha Satellite) regions [Required]
+    -o, --output_prefix: A prefix for the output files. The output files will be named as <output_prefix>.strictCDR.bed and <output_prefix>.strictTransitions.bed [Required]
+    -p, --percent: The percentage threshold for the CDRs. Default is 10 [Optional]
+    -t, --transition_percent: The transition percentage threshold. Default is 20 [Optional]
+    -w, --window_size: The window size. Default is 1020 [Optional]
+    -m, --min_size: The minimum amound of windows flagged as a strict CDRs to keep a CDR. Minimum CDR Size is this * window_size. Default is 3 [Optional]
+    -d, --merge_distance: The distance to merge nearby CDR entries(before filtering by size). Distance is given in number of windows. Default is 2 [Optional]
 ```
 
 #### HMMCDRDetection.py
 Thank you [Justin Chan](https://github.com/Justinmchan408) for writing the framework for this [HMM](https://github.com/Justinmchan408/HMMCDRDetection)! This version contains a few bug fixes, performance changes, and functionality improvements. One of the major ones is the ability to identify CDR transtions which are regions flanking CDRs where methylation gradually increases or decreases. (Note: Requires python packages numpy and pandas)
 ```
 usage: HMMCDRReferenceDetection.py [-h]  
-    -p bed4 file containing modified CPG site probabilities [required]
-    -s bed file containing estimate CDR and Transition Regions [required]
-    -o output bed prefix [required]
-    -l Learning Rate for the Viterbi Learning [default 0.0000001]
-    --steps Maximum steps for Viterbi Learning [default 100]
+    -p: bed4 file containing modified CPG site probabilities [Required]
+    -s: bed file containing estimate CDR and Transition Regions [Required]
+    -o: output bed prefix [Required]
+    -l: Learning Rate for the Viterbi Learning. Default is 0.0000001 [Optional]
+    --steps: Maximum steps for Viterbi Learning. Default is 100 [Optional]
 ```
 
 ### HMM Validations:
@@ -63,19 +63,28 @@ usage: HMMCDRReferenceDetection.py [-h]
 Creates a histogram of the `modkit pileup` values within the H1L array. Colors values based on whether they fall within annotations from the HMM CDR bed9 file. 
 ```
 usage: cdr_histogram.py [-h]  
-    -i bed4 file containing modified CPG site probabilities [required]
-    -r bed file containing HMM CDR and Transition Region Predictionsgit  [required]
-    -o Output file [default 'histogram.png']
+    -i, --modification_probabilities: bed4 file containing modified CPG site probabilities [Required]
+    -r, --regions: bed file containing HMM CDR and Transition Region Predictionsgit  [Required]
+    -o, --output: Output file. Default is 'histogram.png' [Optional]
 ```
 
 #### hmm_heatmaps.py
 Generates two heatmaps to represent the emission and transition matrices from HMM CDR predictions. 
 ```
 usage: hmm_heatmaps.py [-h]  
-    -e Emmission matrix in .csv format from HMMCDRDetection.py [required]
-    -t Transition matrix in .csv format from HMMCDRDetection.py [required]
-    -o Output prefix [default 'hmm_heatmap']
+    -e, --emissionMatrix: Emmission matrix in .csv format from HMMCDRDetection.py [Required]
+    -t, --transitionMatrix: Transition matrix in .csv format from HMMCDRDetection.py [Required]
+    -o, --outputPrefix: Output prefix. Default is 'hmm_heatmap' [Optional]
 ```
 
-
+#### create_track_pngs.py
+Creates a png that has the methylation, strict CDRs, HMM CDRs, and H1L portion of the CenSat track. 
+```
+usage: create_track_pngs.py [-h]  
+    -p, --mod_prob: Path to the 5mC probabilities bed file [Required]
+    -s, --strict: Path to the Strict CDR bed file [Required]
+    -v, --viterbi: Path to the Viterbi HMM bed file [Required]
+    -r, --regions_file: Path to the satellite array regions bed file [Required]
+    -o, --output_file: Output file path [Required]
+```
 

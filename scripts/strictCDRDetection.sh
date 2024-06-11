@@ -66,7 +66,7 @@ while true; do
             shift 2
             ;;	
         -h|--help)
-            echo "Usage: strict_cdr.sh -i <input_file> -r <hg002_merged_H1L_file> -o <output_prefix> -p <percentage> -t <transition_percentage> -w <window_size> -m <min_size>"
+            echo "Usage: strictCDRDetection.sh -i <input_file> -r <hg002_merged_H1L_file> -o <output_prefix> -p <percentage> -t <transition_percentage> -w <window_size> -m <min_size>"
             echo "Options:"
             echo "  -i, --input: Required. Modkit pileup bedgraph of fraction modified."
             echo "  -r, --hg002_merged_H1L: Required. The file containing the H1L(active-Alpha Satellite) regions."
