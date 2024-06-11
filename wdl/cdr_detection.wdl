@@ -149,7 +149,7 @@ task samtools_index {
 		String sample_id
 
 		Int memSizeGB = 256
-		Int threadCount = 16
+		Int threadCount = 32
 		Int preempts = 1
 	}
 
@@ -193,7 +193,7 @@ task modkit_pileup {
 		String sample_id
 
 		Int memSizeGB = 256
-		Int threadCount = 16
+		Int threadCount = 32
 		Int preempts = 1
 	}
 

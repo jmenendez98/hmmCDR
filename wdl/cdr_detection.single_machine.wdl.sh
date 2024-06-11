@@ -1,19 +1,19 @@
 #!/bin/bash
 
-rm -r cdr_detect_jobstore
-rm -r wdl_temp
+rm -r ./.jobstore
+rm -r ./.wdl_temp
 
 mkdir -p cdr_detect_output
 mkdir -p wdl_temp
 
 toil-wdl-runner \
-	--jobStore cdr_detect_jobstore \
+	--jobStore ./.jobstore \
 	--stats \
 	--batchSystem single_machine \
-	--maxCores 16 \
+	--maxCores 32 \
 	--runLocalJobsOnWorkers \
 	--disableProgress \
-	--workDir wdl_temp \
+	--workDir ./.wdl_temp \
 	--caching false \
 	--container singularity \
 	--clean=never \
