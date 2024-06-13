@@ -284,7 +284,7 @@ task strict_detect {
 		Int preempts = 1
 	}
 
-	String strict_cdr_bed_output = "~{contig_name}_~{sample_id}.strict.bed"
+	String strict_cdr_bed_output = "~{contig_name}_~{sample_id}.strictCDRs.bed"
 
 	command <<<
 		set -eux -o pipefail
@@ -292,8 +292,6 @@ task strict_detect {
 		bash /opt/strictCDRDetection.sh \
 			-i ~{pileup_bed} \
 			-r ~{censat_h1l_bed} \
-			-l 1 \
-			-h 20 \
 			-o "~{contig_name}_~{sample_id}"
 
 		# for handling cases in which H1L doesn't have CDR(mostly broken contigs)

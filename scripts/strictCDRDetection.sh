@@ -12,8 +12,8 @@ window_size=1020
 min_size=3
 merge_distance=3
 
-OPTIONS=r:,o:,p:,t:,w:,m:
-LONGOPTS=hg002_merged_H1L:,output_prefix:,percent:,transition_percent:,window_size:,min_size:
+OPTIONS=i:,r:,o:,p:,t:,w:,m:,d:
+LONGOPTS=input:,hg002_merged_H1L:,output_prefix:,percent:,transition_percent:,window_size:,min_size:,merge_distance:
 
 # Check if the correct number of arguments are provided
 if [ "$#" -lt 1 ]; then
@@ -101,8 +101,7 @@ mkdir -p "windows"
 # declare variables
 window_bed="windows/${prefix}.windows1000.bed"
 window_mean="windows/${prefix}.windows1000.mean.bed"
-transitions="${prefix}.strictTransitions.bed"
-strict_cdrs="${prefix}.strictCDR.bed"
+strict_cdrs="${prefix}.strictCDRs.bed"
 
 # 1
 awk -v window_size="$window_size" '
@@ -150,14 +149,15 @@ awk -v cdr_thresh=$cdr_threshold '$4 <= cdr_thresh' $window_mean | \
 	bedtools intersect -a - -b $hg002_merged_H1L -f 1.0 | \
 	awk -v min=$min_size -'BEGIN {FS=OFS="\t"} {if ($3-$2 > min) {print $1,$2,$3}}' - | \
 	bedtools merge -d $merge_dist -i - | \
-	sort -k 1,1 -k2,2n -o $strict_cdrs
+	sort -k 1,1 -k2,2n -o temp_cdrs.bed
 
 awk -v trans_thresh=$cdr_transition_threshold '$4 <= trans_thresh' $window_mean | \
 	bedtools merge -d 3 -i - | \
 	bedtools intersect -a - -b $hg002_merged_H1L -f 1.0 | \
 	bedtools intersect -a - -b $strict_cdrs -wa | \
-	bedtools subtract -a - -b $strict_cdrs | \
-	sort -k 1,1 -k2,2n -o $transitions
+	bedtools subtract -a - -b $strict_cdrs > temp_transitions.bed
 
-echo "Wrote CDRs to: ${strict_cdrs}"
-echo "Wrote Transitions to: ${transitions}"
+cat temp_cdrs.bed temp_transitions.bed | \
+    sort sort -k 1,1 -k2,2n -o ${strict_cdrs}
+
+echo "Wrote to: ${strict_cdrs}"
