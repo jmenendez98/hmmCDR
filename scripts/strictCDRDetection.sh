@@ -138,9 +138,6 @@ cdr_threshold=$(awk '{print $4}' $window_mean | sort -n | \
 cdr_transition_threshold=$(awk '{print $4}' $window_mean | sort -n | \
 	awk -v perc=$current_transition_percent 'BEGIN{line=-1} {all[NR]=$1} END{line=int((perc/100.0)*NR); if(line<1)line=1; print all[line]}')
 
-# Reset min_length for each file
-current_min_length=$min_length
-
 merge_dist=$(echo "$merge_distance * $window_size + 1" | bc)
 
 # 5
