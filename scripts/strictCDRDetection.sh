@@ -151,10 +151,12 @@ awk -v cdr_thresh=$cdr_threshold '$4 <= cdr_thresh' $window_mean | \
 awk -v trans_thresh=$cdr_transition_threshold 'BEGIN {FS=OFS="\t"} $4 <= trans_thresh' $window_mean | \
 	bedtools merge -d 3 -i - | \
 	bedtools intersect -a - -b $hg002_merged_H1L -f 1.0 | \
-	bedtools intersect -a - -b $strict_cdrs -wa | \
-	bedtools subtract -a - -b $strict_cdrs > temp_transitions.bed
+	bedtools intersect -a - -b temp_cdrs.bed -wa | \
+	bedtools subtract -a - -b temp_cdrs.bed > temp_transitions.bed
 
 cat temp_cdrs.bed temp_transitions.bed | \
     sort sort -k 1,1 -k2,2n -o ${strict_cdrs}
+
+rm temp_cdrs.bed temp_transitions.bed
 
 echo "Wrote to: ${strict_cdrs}"
