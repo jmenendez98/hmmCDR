@@ -155,7 +155,7 @@ awk -v trans_thresh=$cdr_transition_threshold 'BEGIN {FS=OFS="\t"} $4 <= trans_t
 	bedtools subtract -a - -b temp_cdrs.bed > temp_transitions.bed
 
 cat temp_cdrs.bed temp_transitions.bed | \
-    sort sort -k 1,1 -k2,2n -o ${strict_cdrs}
+    sort -k 1,1 -k2,2n -o ${strict_cdrs}
 
 rm temp_cdrs.bed temp_transitions.bed
 
