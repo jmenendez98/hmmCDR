@@ -335,7 +335,7 @@ task hmm_detect {
 		
 		if [ -s ~{strict_bed} ]; then
 			# run the HMM with a VERY low learning rate maybe 1e-7?
-			python3 /opt/HMMCDRDetection.py -m \
+			python3 /opt/HMMCDRDetection.py \
 				-l 0.0000001 \
 				-p ~{pileup_bed} \
 				-s ~{strict_bed} \
