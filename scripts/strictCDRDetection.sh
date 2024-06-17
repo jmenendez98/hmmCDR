@@ -146,13 +146,16 @@ awk -v cdr_thresh=$cdr_threshold '$4 <= cdr_thresh' $window_mean | \
 	bedtools intersect -a - -b $hg002_merged_H1L -f 1.0 | \
 	awk -v min=$min_size 'BEGIN {FS=OFS="\t"} {if ($3-$2 > min) {print $1,$2,$3}}' - | \
 	bedtools merge -d $merge_dist -i - | \
-	sort -k 1,1 -k2,2n -o temp_cdrs.bed
+    awk 'BEGIN {OFS=FS="\t"} $3 - $2 >= 1750 {print $1, $2, $3, "strict_CDR", 0, ".", $2, $3, "0,0,255"}' | \
+	awk '!seen[$0]++' > temp_cdrs.bed
 
 awk -v trans_thresh=$cdr_transition_threshold 'BEGIN {FS=OFS="\t"} $4 <= trans_thresh' $window_mean | \
 	bedtools merge -d 3 -i - | \
 	bedtools intersect -a - -b $hg002_merged_H1L -f 1.0 | \
 	bedtools intersect -a - -b temp_cdrs.bed -wa | \
-	bedtools subtract -a - -b temp_cdrs.bed > temp_transitions.bed
+	bedtools subtract -a - -b temp_cdrs.bed | \
+    awk 'BEGIN {OFS=FS="\t"} {print $1, $2, $3, "strict_Transition", 0, ".", $2, $3, "173,216,230"}' | \
+	awk '!seen[$0]++' > temp_transitions.bed
 
 cat temp_cdrs.bed temp_transitions.bed | \
     sort -k 1,1 -k2,2n -o ${strict_cdrs}

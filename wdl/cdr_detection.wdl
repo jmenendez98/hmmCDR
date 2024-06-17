@@ -23,8 +23,8 @@ workflow CDR_Detection_Workflow {
 	call modkit_pileup {
 		input:
 			input_fasta = input_fasta,
-			input_bam = samtools_index.bam_file,
-			input_bai = samtools_index.bam_index,
+			indexed_bam = samtools_index.bam_file,
+			index_bai = samtools_index.bam_index,
 			sample_id = sample_id
 	}
 
@@ -188,8 +188,8 @@ task samtools_index {
 task modkit_pileup {
 	input {
 		File input_fasta 
-		File input_bam
-		File input_bai
+		File indexed_bam
+		File index_bai
 		String sample_id
 
 		Int memSizeGB = 256
@@ -199,7 +199,7 @@ task modkit_pileup {
 
 	# Estimate disk size required
 	Int input_fasta_size = ceil(size(input_fasta, "GB"))
-	Int input_bam_size = ceil(size(input_bam, "GB"))       
+	Int input_bam_size = ceil(size(indexed_bam, "GB"))       
 	Int final_disk_dize = input_fasta_size + input_bam_size * 8
 
 	String modkit_pileup_bed_output = "~{sample_id}.5mCpileup.bed"
@@ -209,7 +209,7 @@ task modkit_pileup {
 
 		## run modkit pileup!
 		modkit pileup \
-			~{input_bam} ~{modkit_pileup_bed_output} \
+			~{indexed_bam} ~{modkit_pileup_bed_output} \
 			-t ~{threadCount} \
 			--filter-percentile 0.66 \
 			--ignore h \
