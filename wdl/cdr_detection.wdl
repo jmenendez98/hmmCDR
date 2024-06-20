@@ -407,12 +407,12 @@ task validate_cdrs {
 					-r ~{hmm_bed} \
 					-o "~{histogram_output}"
 
-				python3 /opt/create_track_pngs.py \
-					-p ~{pileup_bed} \
-					-s ~{strict_bed} \
-					-v ~{hmm_bed} \
-					-r ~{censat_h1l_bed} \
-					-o ~{track_png_output}
+				# python3 /opt/create_track_pngs.py \
+				#	-p ~{pileup_bed} \
+				#	-s ~{strict_bed} \
+				#	-v ~{hmm_bed} \
+				#	-r ~{censat_h1l_bed} \
+				#	-o ~{track_png_output}
 
 				python3 /opt/hmm_heatmaps.py \
 					-e ~{emissionMatrix} \
@@ -503,10 +503,10 @@ task gather_outputs {
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
 		done
-		for file in ~{sep=" " browser_pngs}; do
-			file_basename=$(basename $file)
-			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
-		done
+		# for file in ~{sep=" " browser_pngs}; do
+		#	file_basename=$(basename $file)
+		#	find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
+		# done
 		for file in ~{sep=" " emission_heatmaps}; do
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
