@@ -139,12 +139,13 @@ cdr_transition_threshold=$(awk '{print $4}' $window_mean | sort -n | \
 	awk -v perc=$current_transition_percent 'BEGIN{line=-1} {all[NR]=$1} END{line=int((perc/100.0)*NR); if(line<1)line=1; print all[line]}')
 
 merge_dist=$(echo "$merge_distance * $window_size + 1" | bc)
+min_cdr_size=$(echo "$min_size * $window_size + 1" | bc)
 
 # 5
 awk -v cdr_thresh=$cdr_threshold '$4 <= cdr_thresh' $window_mean | \
 	bedtools merge -d 3 -i - | \
 	bedtools intersect -a - -b $hg002_merged_H1L -f 1.0 | \
-	awk -v min=$min_size 'BEGIN {FS=OFS="\t"} {if ($3-$2 > min_size) {print $1,$2,$3}}' - | \
+	awk -v min=$min_cdr_size 'BEGIN {FS=OFS="\t"} {if ($3-$2 > min) {print $1,$2,$3}}' - | \
 	bedtools merge -d $merge_dist -i - | \
     awk 'BEGIN {OFS=FS="\t"} $3 - $2 >= 1750 {print $1, $2, $3, "strict_CDR", 0, ".", $2, $3, "0,0,255"}' | \
 	awk '!seen[$0]++' > temp_cdrs.bed
