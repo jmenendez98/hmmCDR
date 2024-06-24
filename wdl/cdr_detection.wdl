@@ -56,7 +56,6 @@ workflow CDR_Detection_Workflow {
 		call validate_cdrs {
 			input:
 				pileup_bed = contig_extract_and_h1l_intersect.pileup_h1l_intersect_bed,
-				censat_h1l_bed = extract_h1l.censat_h1l_bed,
 				strict_bed = strict_detect.strict_cdr_bed,
 				hmm_bed = hmm_detect.viterbi_cdr_bed,
 				emissionMatrix = hmm_detect.emissionMatrix,
@@ -72,7 +71,6 @@ workflow CDR_Detection_Workflow {
 			pileup_beds = contig_extract_and_h1l_intersect.pileup_h1l_intersect_bed,
 			strict_cdrs_beds = strict_detect.strict_cdr_bed,
 			pileup_histograms = validate_cdrs.histogram,
-			browser_pngs = validate_cdrs.track_png,
 			emission_heatmaps = validate_cdrs.emission_heatmap,
 			transition_heatmaps = validate_cdrs.transition_heatmap,
 			emissionBoundaries = hmm_detect.emissionBoundaries,
@@ -372,7 +370,6 @@ task hmm_detect {
 task validate_cdrs {
 	input {
 		File pileup_bed
-		File censat_h1l_bed
 		File strict_bed
 		File hmm_bed
 		File emissionMatrix
@@ -387,7 +384,6 @@ task validate_cdrs {
 	}
 	
 	String histogram_output = "~{contig_name}_~{sample_id}.hmmCDR.histogram.png"
-	String track_png_output = "~{contig_name}_~{sample_id}.track.png"
 	String emission_heatmap_output = "~{contig_name}_~{sample_id}.hmmCDR.emissionMatrixHeatmap.png"
 	String transition_heatmap_output = "~{contig_name}_~{sample_id}.hmmCDR.transitionMatrixHeatmap.png"
 	
@@ -407,13 +403,6 @@ task validate_cdrs {
 					-r ~{hmm_bed} \
 					-o "~{histogram_output}"
 
-				# python3 /opt/create_track_pngs.py \
-				#	-p ~{pileup_bed} \
-				#	-s ~{strict_bed} \
-				#	-v ~{hmm_bed} \
-				#	-r ~{censat_h1l_bed} \
-				#	-o ~{track_png_output}
-
 				python3 /opt/hmm_heatmaps.py \
 					-e ~{emissionMatrix} \
 					-t ~{transitionMatrix} \
@@ -428,14 +417,12 @@ task validate_cdrs {
 		fi
 
 		touch ~{histogram_output}
-		touch ~{track_png_output}
 		touch ~{emission_heatmap_output}
 		touch ~{transition_heatmap_output}
 	>>>
 
 	output {
 		File histogram = histogram_output
-		File track_png = track_png_output
 		File emission_heatmap = emission_heatmap_output
 		File transition_heatmap = transition_heatmap_output
 	}
@@ -457,7 +444,6 @@ task gather_outputs {
 		Array[File] strict_cdrs_beds
 
 		Array[File] pileup_histograms
-		Array[File] browser_pngs
 		Array[File] emission_heatmaps
 		Array[File] transition_heatmaps
 		Array[File] emissionBoundaries
@@ -503,26 +489,27 @@ task gather_outputs {
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
 		done
-		# for file in ~{sep=" " browser_pngs}; do
-		#	file_basename=$(basename $file)
-		#	find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
-		# done
+
 		for file in ~{sep=" " emission_heatmaps}; do
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
 		done
+
 		for file in ~{sep=" " transition_heatmaps}; do
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
 		done
+
 		for file in ~{sep=" " emissionBoundaries}; do
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
 		done
+
 		for file in ~{sep=" " emissionMatrix}; do
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
 		done
+		
 		for file in ~{sep=" " transitionMatrix}; do
 			file_basename=$(basename $file)
 			find . -type f -name $file_basename -size +0 -exec cp {} summary_zip \;
