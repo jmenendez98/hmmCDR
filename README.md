@@ -1,4 +1,4 @@
-# CDR_workflow
+# hmmCDR
 This is a WDL workflow to identify Centromere Dip Regions(CDRs)/Centromere Cores within the Active Alpha Sat Array. It does this by leveraging ONT's [modkit](https://github.com/nanoporetech/modkit) software to aggregate 5mC methylation encoded in MM/ML tags. This workflow and software was designed for use with HG002 Centomere Projects and the Human Pangenome Research Consortium's assemblies, to provide a highly accurate prediction for the CDR location. 
 
 #### WDL Workflow Inputs:
