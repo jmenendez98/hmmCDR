@@ -6,8 +6,8 @@ set -eux -o pipefail
 file=""
 hg002_merged_H1L=""
 prefix=""
-percent=10
-transition_percent=20
+percent=5
+transition_percent=15
 window_size=1020
 min_size=3
 merge_distance=3

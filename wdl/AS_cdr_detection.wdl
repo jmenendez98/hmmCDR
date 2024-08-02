@@ -6,12 +6,6 @@ workflow CDR_Detection_Workflow {
 		File censat_bed
 		File mC_bam
 		String sample_id
-
-		Int? max_cores
-		Int? strict_cdr_percentile
-		Int? strict_trans_percentile
-		Int? viterbi_iterations
-		Float? viterbi_lr
 	}
 
 	call extract_h1l {
@@ -23,7 +17,6 @@ workflow CDR_Detection_Workflow {
 	call samtools_index {
 		input:
 			input_bam = mC_bam,
-			threadCount = select_first([max_cores,32]),
 			sample_id = sample_id
 	}
 
@@ -32,7 +25,6 @@ workflow CDR_Detection_Workflow {
 			input_fasta = input_fasta,
 			indexed_bam = samtools_index.bam_file,
 			index_bai = samtools_index.bam_index,
-			threadCount = select_first([max_cores,32]),
 			sample_id = sample_id
 	}
 
@@ -50,8 +42,6 @@ workflow CDR_Detection_Workflow {
 				pileup_bed = contig_extract_and_h1l_intersect.pileup_h1l_intersect_bed,
 				censat_h1l_bed = extract_h1l.censat_h1l_bed,
 				contig_name = contig,
-				cdr_percentile = select_first([strict_cdr_percentile,10]),
-				trans_percentile = select_first([strict_trans_percentile,20]),
 				sample_id = sample_id
 		}
 		
@@ -60,8 +50,6 @@ workflow CDR_Detection_Workflow {
 				pileup_bed = contig_extract_and_h1l_intersect.pileup_h1l_intersect_bed,
 				strict_bed = strict_detect.strict_cdr_bed,
 				contig_name = contig,
-				viterbi_iterations = select_first([viterbi_iterations,1]),
-				viterbi_lr = select_first([viterbi_lr,0.0000001]),
 				sample_id = sample_id
 		}
 		
@@ -156,10 +144,10 @@ task extract_h1l {
 task samtools_index {
 	input {
 		File input_bam
-		Int threadCount
 		String sample_id
 
 		Int memSizeGB = 256
+		Int threadCount = 32
 		Int preempts = 1
 	}
 
@@ -200,10 +188,10 @@ task modkit_pileup {
 		File input_fasta 
 		File indexed_bam
 		File index_bai
-		Int threadCount
 		String sample_id
 
 		Int memSizeGB = 256
+		Int threadCount = 32
 		Int preempts = 1
 	}
 
@@ -221,7 +209,7 @@ task modkit_pileup {
 		modkit pileup \
 			~{indexed_bam} ~{modkit_pileup_bed_output} \
 			-t ~{threadCount} \
-			--filter-percentile 0.66 \
+			--filter-threshold C:0.8 \
 			--ignore h \
 			--force-allow-implicit \
 			--cpg \
@@ -286,8 +274,6 @@ task strict_detect {
 		File pileup_bed
 		File censat_h1l_bed
 		String contig_name
-		Int cdr_percentile
-		Int trans_percentile
 		String sample_id
 
 		Int memSizeGB = 16
@@ -302,8 +288,6 @@ task strict_detect {
 		set -eux -o pipefail
 
 		bash /opt/strictCDRDetection.sh \
-			--percent ~{cdr_percentile} \
-			--transition_percent ~{trans_percentile} \
 			-i ~{pileup_bed} \
 			-r ~{censat_h1l_bed} \
 			-o "~{contig_name}_~{sample_id}"
@@ -330,8 +314,6 @@ task hmm_detect {
 		File pileup_bed
 		File strict_bed
 		String contig_name
-		Int viterbi_iterations 
-		Float viterbi_lr
 		String sample_id
 
 		Int memSizeGB = 64
@@ -352,8 +334,7 @@ task hmm_detect {
 		if [ -s ~{strict_bed} ]; then
 			# run the HMM with a VERY low learning rate maybe 1e-7?
 			python3 /opt/HMMCDRDetection.py \
-				--maxSteps ~{viterbi_iterations} \
-				--learningRate ~{viterbi_lr} \
+				-l 0.0000001 \
 				-p ~{pileup_bed} \
 				-s ~{strict_bed} \
 				-o ~{viterbi_cdr_bed_output}
