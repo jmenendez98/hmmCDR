@@ -83,7 +83,7 @@ class hmmCDR_priors:
         bedMethyl_bedtool = pybedtools.BedTool.from_dataframe(filtered_bedMethyl)
         regions_bedtool = pybedtools.BedTool.from_dataframe(filtered_regions)
         intersected = bedMethyl_bedtool.intersect(regions_bedtool, wa=True, u=True)
-        intersected_df = intersected.to_dataframe(names=[0, 1, 2, 3, 10])
+        intersected_df = intersected.to_dataframe(names=[0, 1, 2, 3])
         return intersected_df
 
     def create_windows(self, intersected_bedMethyl):
