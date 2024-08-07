@@ -1,1 +1,3 @@
 scripts/*.ipynb
+*.bed
+*.bedgraph
