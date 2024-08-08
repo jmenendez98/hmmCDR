@@ -24,3 +24,6 @@ python3 hmmCDR.py --mod_code m --sat_type H1L chr10_MAT_HG002_ONT.5mCpileup.bed 
 2. Make sure all the flags are working as intended
     - Can I run with a matrix input?
     - Can I run with a priorCDR input?
+3. Test with invalid inputs to throw decent errors:
+    - multiple chromosomes in one bedfile
+    - file not overlapping with region of interest
