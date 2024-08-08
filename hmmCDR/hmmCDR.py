@@ -7,8 +7,8 @@ import concurrent.futures
 
 from hmmlearn import hmm
 
-from hmmCDRparse import hmmCDRparse
-from hmmCDRprior import hmmCDRprior
+from hmmCDR.hmmCDRparse import hmmCDRparse
+from hmmCDR.hmmCDRprior import hmmCDRprior
 
 
 class hmmCDR:
@@ -268,8 +268,7 @@ class hmmCDR:
 
         return hmmCDRresults_chrom_dict, hmmCDR_labelled_bed4Methyl_chrom_dict
 
-
-if __name__ == "__main__":
+def main():
     argparser= argparse.ArgumentParser(description='Process input files with optional parameters.')
 
     # Required arguments
@@ -374,3 +373,8 @@ if __name__ == "__main__":
     concatenated_hmmCDRs = pd.concat(hmmCDRresults_chrom_dict.values(), axis=0)
     concatenated_hmmCDRs.to_csv(args.output_path, sep='\t', index=False, header=False)
     print(f"hmmCDRs saved to: {args.output_path}")
+
+
+if __name__ == "__main__":
+    main()
+    

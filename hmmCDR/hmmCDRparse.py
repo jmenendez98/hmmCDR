@@ -229,7 +229,7 @@ class hmmCDRparse:
         self.cenSat_chrom_dict = cenSat_chrom_dict
         return bed4Methyl_chrom_dict, cenSat_chrom_dict
 
-if __name__ == "__main__":
+def main():
     argparser = argparse.ArgumentParser(description='Process bedMethyl and CenSat BED file to produce hmmCDR priors')
     # Required arguments
     argparser.add_argument('bedMethyl_path', type=str, help='Path to the bedMethyl file')
@@ -262,3 +262,6 @@ if __name__ == "__main__":
     print(f"Filtered CenSat saved to: {args.output_prefix}_filtered_cenSat.bed")
 
     [print(i) for i in bed4Methyl_chrom_dict.values()]
+
+if __name__ == "__main__":
+    main()

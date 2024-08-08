@@ -5,7 +5,7 @@ import argparse
 import os
 import concurrent.futures
 
-from hmmCDRparse import hmmCDRparse
+from hmmCDR.hmmCDRparse import hmmCDRparse
 
 class hmmCDRprior:
     '''
@@ -219,7 +219,8 @@ class hmmCDRprior:
 
         return hmmCDRpriors_chrom_dict
 
-if __name__ == "__main__":
+
+def main():
     argparser = argparse.ArgumentParser(description='Process bedMethyl and CenSat BED file to produce hmmCDR priors')
     
     # Required arguments
@@ -268,3 +269,7 @@ if __name__ == "__main__":
     concatenated_priors = pd.concat(hmmCDRpriors.values(), axis=0)
     concatenated_priors.to_csv(args.output_path, sep='\t', index=False, header=False)
     print(f"hmmCDR Priors saved to: {args.output_path}")
+
+
+if __name__ == "__main__":
+    main()
