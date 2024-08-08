@@ -154,10 +154,8 @@ class hmmCDR_priors:
 
 
 def main():
-    # Step 0: parse arguments
     args = parse_args()
 
-    # Create an instance of CDRProcessor
     priorCDR = hmmCDR_priors(
         bedMethyl_path=args.bedMethyl_path,
         cenSat_path=args.cenSat_path,
@@ -173,7 +171,6 @@ def main():
         output_label=args.output_label
     )
 
-    # save the priors bed!
     priorCDR.priorsBed.to_csv(args.output_path, sep='\t', header=False, index=False)
 
 if __name__ == "__main__":
