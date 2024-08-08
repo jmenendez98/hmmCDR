@@ -40,7 +40,7 @@ This python package takes in a bed file of 5mC methylation in aggregate, prefera
 | 2      | start position        | 0-based start position                                                         | int   |
 | 3      | end position          | 0-based exclusive end position                                                 | int   |
 | 4      | satellite type/name   | type of satellite and for some specific name in parentheses                    | str   |
-| 5      | score                 | Equal to N<sub>valid_cov</sub>.                                                | int   |
+| 5      | score                 | Not sure what if it is used for anytime.                                       | int   |
 | 6      | strand                | '+' for positive strand '-' for negative strand, '.' if uncertain              | str   |
 | 7      | start position        | included for compatibility                                                     | int   |
 | 8      | end position          | included for compatibility                                                     | int   |
