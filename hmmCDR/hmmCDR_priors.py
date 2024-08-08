@@ -103,8 +103,7 @@ class hmmCDR_priors:
         combined_df = combined_df.sort_values(by=1).reset_index(drop=True)
         return combined_df
 
-
-def main():
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process bedMethyl and CenSat BED file to produce hmmCDR priors')
     
     # Required arguments
@@ -147,6 +146,3 @@ def main():
     )
 
     CDRpriors.hmmCDRpriors.to_csv(args.output_path, sep='\t', header=False, index=False)
-
-if __name__ == "__main__":
-    main()
