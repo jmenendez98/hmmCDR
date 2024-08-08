@@ -56,7 +56,7 @@ class hmmCDR_parser:
         bedMethyl_bedtool = pybedtools.BedTool.from_dataframe(bedgraphMethyl)
         regions_bedtool = pybedtools.BedTool.from_dataframe(subset_cenSat)
         intersected = bedMethyl_bedtool.intersect(regions_bedtool, wa=True, u=True)
-        intersected_df = intersected.to_dataframe(names=[0, 1, 2, 3])
+        intersected_df = intersected.to_dataframe()
         return intersected_df
     
 

@@ -7,12 +7,17 @@ import os
 from hmmCDR_parser import hmmCDR_parser
 
 class hmmCDR_priors:
+    '''
+    CLASS DOCSTRING
+    '''
     def __init__(self, bedgraphMethyl, output_path, 
                  window_size=1020, minCDR_size=3000,
                  priorCDR_percent=5, priorTransition_percent=10, 
                  output_label='CDR', enrichment=False,
                  save_intermediates=False):
-        
+        '''
+        INIT DOCSTRING
+        '''
         # required
         self.bedgraphMethyl = bedgraphMethyl
         self.output_path = output_path
@@ -38,18 +43,25 @@ class hmmCDR_priors:
         
 
     def create_windows(self, intersected_bedMethyl):
-        min_val = int(intersected_bedMethyl[1].min())
-        max_val = int(intersected_bedMethyl[1].max())
+        '''
+        DOCSTRING
+        '''
+        min_val = int(intersected_bedMethyl['start'].min())
+        max_val = int(intersected_bedMethyl['end'].max())
         regions = []
         current_start = min_val
         while current_start + self.window_size <= max_val:
             current_end = current_start + self.window_size
-            regions.append([intersected_bedMethyl[0][0], current_start, current_end])
+            chrom = intersected_bedMethyl.iloc[0]['chrom'] 
+            regions.append([chrom, current_start, current_end])
             current_start = current_end
         regions_df = pd.DataFrame(regions, columns=[0, 1, 2])
         return regions_df
 
     def mean_within_windows(self, bedMethyl_df, windows_df):
+        '''
+        DOCSTRING
+        '''
         intersected_bedtool = pybedtools.BedTool.from_dataframe(bedMethyl_df)
         windows_bedtool = pybedtools.BedTool.from_dataframe(windows_df)
         window_means = windows_bedtool.map(intersected_bedtool, c=4, o='mean')
@@ -57,6 +69,9 @@ class hmmCDR_priors:
         return window_means_df
 
     def calculate_percentiles(self, windows_mean_df):
+        '''
+        DOCSTRING
+        '''
         windows_mean_df['mean_value'].replace('.', np.nan, inplace=True)
         mean_values = windows_mean_df['mean_value'].dropna().astype(float)
         priorCDR_score = np.percentile(mean_values, q=self.priorCDR_percent)
@@ -64,6 +79,9 @@ class hmmCDR_priors:
         return priorCDR_score, priorTransition_score
 
     def create_priorCDR_dataframe(self, windows_mean_df, priorCDR_score):
+        '''
+        DOCSTRING
+        '''
         windows_mean_df['mean_value'] = pd.to_numeric(windows_mean_df['mean_value'], errors='coerce')
         windows_mean_df = windows_mean_df.dropna(subset=['mean_value'])
         if self.enrichment:
@@ -79,6 +97,9 @@ class hmmCDR_priors:
         return filtered_merged_df
 
     def create_priorTransition_dataframe(self, windows_mean_df, priorTransition_score, CDR_df):
+        '''
+        DOCSTRING
+        '''
         windows_mean_df['mean_value'] = pd.to_numeric(windows_mean_df['mean_value'], errors='coerce')
         windows_mean_df = windows_mean_df.dropna(subset=['mean_value'])
         if self.enrichment:
@@ -97,6 +118,9 @@ class hmmCDR_priors:
         return priorTransition_df
     
     def combine_beds(self, priorCDR_df, priorTransition_df):
+        '''
+        DOCSTRING
+        '''
         priorCDR_df[3] = self.output_label
         priorTransition_df[3] = self.output_label + "_transition"
         combined_df = pd.concat([priorCDR_df, priorTransition_df], ignore_index=True)
