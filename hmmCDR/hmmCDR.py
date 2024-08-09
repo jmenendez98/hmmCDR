@@ -327,12 +327,12 @@ def main():
 
     if args.save_intermediates:
         concatenated_bed4Methyls = pd.concat(bed4Methyl_chrom_dict.values(), axis=0)
-        concatenated_bed4Methyls.to_csv('{output_prefix}_intersected_bed4Methyl.bedgraph', 
+        concatenated_bed4Methyls.to_csv(f'{output_prefix}_intersected_bed4Methyl.bedgraph', 
                                         sep='\t', index=False, header=False)
         concatenated_regions = pd.concat(cenSat_chrom_dict.values(), axis=0)
-        concatenated_regions.to_csv('{output_prefix}_selected_regions.bed', 
+        concatenated_regions.to_csv(f'{output_prefix}_selected_regions.bed', 
                                         sep='\t', index=False, header=False)
-        print(f"Wrote Intermediates: {output_prefix}_intersected_bed4Methyl.bedgraph and {output_prefix}_selected_regions.bed.")
+        print(f'Wrote Intermediates: {output_prefix}_intersected_bed4Methyl.bedgraph and {output_prefix}_selected_regions.bed.')
 
     CDRpriors = hmmCDRprior(
         window_size=args.window_size, 
@@ -347,9 +347,9 @@ def main():
     
     if args.save_intermediates:
         concatenated_priors = pd.concat(hmmCDRpriors_chrom_dict.values(), axis=0)
-        concatenated_priors.to_csv('{output_prefix}_hmmCDRpriors.bed', 
+        concatenated_priors.to_csv(f'{output_prefix}_hmmCDRpriors.bed', 
                                         sep='\t', index=False, header=False)
-        print(f"Wrote Intermediate: {output_prefix}_hmmCDRpriors.bed.")
+        print(f'Wrote Intermediate: {output_prefix}_hmmCDRpriors.bed.')
 
     CDRhmm = hmmCDR(
         output_label=args.output_label,
@@ -365,9 +365,9 @@ def main():
 
     if args.save_intermediates:
         concatenated_hmmCDR_labelled_bed4Methyl = pd.concat(hmm_labelled_bed4Methyl_chrom_dict.values(), axis=0)
-        concatenated_hmmCDR_labelled_bed4Methyl.to_csv('{output_prefix}_hmmCDR_labelled_bed4Methyl.bed', 
+        concatenated_hmmCDR_labelled_bed4Methyl.to_csv(f'{output_prefix}_hmmCDR_labelled_bed4Methyl.bed', 
                                                        sep='\t', index=False, header=False)
-        print(f"Wrote Intermediate: {output_prefix}_hmmCDR_labelled_bed4Methyl.bed.")
+        print(f'Wrote Intermediate: {output_prefix}_hmmCDR_labelled_bed4Methyl.bed.')
 
     # Combine all chromosomes and save the output
     concatenated_hmmCDRs = pd.concat(hmmCDRresults_chrom_dict.values(), axis=0)
