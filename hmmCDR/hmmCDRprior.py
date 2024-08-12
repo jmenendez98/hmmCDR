@@ -181,7 +181,7 @@ class hmmCDRprior:
         hmmCDRpriors = self.combine_beds(priorCDRs, priorTranstions)
         if hmmCDRpriors.empty:
             print(f'No Priors Detected for {chrom} with settings: CDR Percentile - {self.priorCDR_percent}, Transition Percentile - {self.priorTransition_percent}')
-            if self.retries < 10:
+            if self.retries <= 10:
                 self.priorCDR_percent += 1
                 self.priorTransition_percent += 1
                 print(f'Retrying with CDR Percentile = {self.priorCDR_percent}, Transition Percentile = {self.priorTransition_percent}')
