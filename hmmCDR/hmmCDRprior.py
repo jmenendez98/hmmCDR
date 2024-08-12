@@ -41,6 +41,8 @@ class hmmCDRprior:
         self.priorTransition_percent = priorTransition_percent
         self.enrichment = enrichment
         self.output_label = output_label
+
+        self.retries = 0
         
 
     def create_windows(self, bed4Methyl):
@@ -177,6 +179,15 @@ class hmmCDRprior:
         priorCDRs = self.create_priorCDR_dataframe(windows_mean, cdr_score)
         priorTranstions = self.create_priorTransition_dataframe(windows_mean, transition_score, priorCDRs)
         hmmCDRpriors = self.combine_beds(priorCDRs, priorTranstions)
+        if hmmCDRpriors.empty:
+            print(f'No Priors Detected for {chrom} with settings: CDR Percentile - {self.priorCDR_percent}, Transition Percentile - {self.priorTransition_percent}')
+            if self.retries < 10:
+                self.priorCDR_percent += 1
+                self.priorTransition_percent += 1
+                print(f'Retrying with CDR Percentile = {self.priorCDR_percent}, Transition Percentile = {self.priorTransition_percent}')
+                self.priors_single_chromosome(chrom, bed4Methyl_chrom)
+            else:
+                raise RuntimeError(f"Failed to detect priors for {chrom} after {self.retries} retries with final settings: CDR Percentile - {self.priorCDR_percent}, Transition Percentile - {self.priorTransition_percent}")
         return chrom, hmmCDRpriors
 
     def priors_all_chromosomes(self, bed4Methyl_chrom_dict):
@@ -251,6 +262,7 @@ def main():
         cenSat_path=args.cenSat_path,
         mod_code=args.mod_code,
         sat_type=args.sat_type,
+        rolling_window=args.rolling_window,
         bedgraph=args.bedgraph
     )
 

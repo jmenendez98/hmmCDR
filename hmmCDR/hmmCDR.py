@@ -210,6 +210,7 @@ class hmmCDR:
     
     def hmm_single_chromosome(self, chrom, bed4Methyl_chrom, priors_chrom):
         if self.emission_matrix is None and self.transition_matrix is None:
+            print('chromosome:', chrom, '\n', bed4Methyl_chrom, '\n', priors_chrom)
             labelled_bed4Methyl_chrom = self.assign_emmisions(self.assign_priors(bed4Methyl_chrom, priors_chrom), 
                                                               self.calculate_emission_thresholds(bed4Methyl_chrom))
             emission_matrix = self.calculate_emission_matrix(labelled_bed4Methyl_chrom)
