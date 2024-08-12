@@ -29,7 +29,7 @@ class hmmCDRparse:
         The DataFrame containing intersected regions between the filtered 
         bedMethyl and CenSat files.
     '''
-    def __init__(self, bedMethyl_path, cenSat_path, min_valid_cov,
+    def __init__(self, bedMethyl_path, cenSat_path, min_valid_cov, rolling_window,
                  mod_code, sat_type, bedgraph=False):
         '''
         Initializes the hmmCDR_parser class by reading and processing the bedMethyl 
@@ -63,6 +63,7 @@ class hmmCDRparse:
         self.sat_type = sat_type
         self.bedgraph = bedgraph
         self.min_valid_cov = min_valid_cov
+        self.rolling_window = rolling_window
 
 
     def read_bedMethyl(self, path):
@@ -180,6 +181,19 @@ class hmmCDRparse:
             raise ValueError("The intersection resulted in an empty DataFrame.")
         
         return intersected_bed4Methyl
+    
+    def calculate_rolling_average(self, bed4Methyl, rolling_size):
+        if rolling_size <= 0:
+            return bed4Methyl.iloc[:, -1]  # Return the original last column if rolling_size is 0 or less
+
+        # Ensure the DataFrame is sorted by start positions
+        bed4Methyl = bed4Methyl.sort_values(by=bed4Methyl.columns[1])
+
+        # Calculate the rolling sum based on the start and end positions
+        rolling_avg = bed4Methyl.apply(lambda row: bed4Methyl[(bed4Methyl.iloc[:, 1] >= row[1] - rolling_size) & 
+                                                              (bed4Methyl.iloc[:, 1] <= row[2])].iloc[:, -1].sum() / rolling_size, axis=1)
+
+        return rolling_avg
 
     def parse_single_chromosome(self, chrom, bedMethyl, cenSat):
             '''
@@ -194,6 +208,7 @@ class hmmCDRparse:
             bedMethyl_filtered = self.filter_bedMethyl(bedMethyl, self.mod_code, self.min_valid_cov)
             cenSat_filtered = self.filter_cenSat(cenSat, self.sat_type)
             intersected = self.intersect_files(bedMethyl_filtered, cenSat_filtered)
+            intersected.iloc[:, -1] = self.calculate_rolling_average(intersected, self.rolling_window)
             return chrom, intersected, cenSat_filtered
 
     def parse_all_chromosomes(self, bedMethyl, cenSat):
@@ -235,8 +250,10 @@ def main():
     argparser.add_argument('bedMethyl_path', type=str, help='Path to the bedMethyl file')
     argparser.add_argument('cenSat_path', type=str, help='Path to the CenSat BED file')
     argparser.add_argument('output_prefix', type=str, help='Path to the output priorCDRs BED file')
+    
     # Optional arguments with default values
     argparser.add_argument('--bedgraph', action='store_true', help='Flag indicating if the input is a bedgraph. (default: False)')
+    argparser.add_argument('--rolling_window', type=int, default=0, help='Flag indicating whether or not to use a rolling average and the rolling avg window size. If set to 0 no rolling averages are used. (defualt: 0)')
     argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum Valid Coverage to consider a methylation site. (default: 10)')
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
     argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
@@ -247,7 +264,8 @@ def main():
                                mod_code=args.mod_code,
                                sat_type=args.sat_type,
                                bedgraph=args.bedgraph,
-                               min_valid_cov=args.min_valid_cov)
+                               min_valid_cov=args.min_valid_cov,
+                               rolling_window=args.rolling_window)
 
     cenSat = hmmCDRparser.read_cenSat(path=hmmCDRparser.cenSat_path)
     bedMethyl = hmmCDRparser.read_bedMethyl(path=hmmCDRparser.bedMethyl_path)

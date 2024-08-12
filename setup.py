@@ -19,8 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'hmmCDR=hmmCDR.hmmCDR:main',
-            'hmmCDRprior=hmmCDR.hmmCDRprior:main',
-            'hmmCDRparse=hmmCDR.hmmCDRparse:main'
+            'hmmCDRprior=hmmCDR.hmmCDRprior:main'
         ]
     },
     classifiers=[

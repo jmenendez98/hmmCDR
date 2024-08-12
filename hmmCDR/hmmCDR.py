@@ -271,31 +271,33 @@ class hmmCDR:
 def main():
     argparser= argparse.ArgumentParser(description='Process input files with optional parameters.')
 
-    # Required arguments
-    argparser.add_argument('bedMethyl_path', type=str, help='Path to the bedMethyl file')
-    argparser.add_argument('cenSat_path', type=str, help='Path to the CenSat BED file')
+    # If --matrix is passed in the first two inputs are paths to matrix files.
+    argparser.add_argument('--matrix', action='store_true', help='Use matrices instead of BED files. (default: False)')
+    required_args = argparser.add_argument_group('required arguments')
+    matrix_arg, unknown = argparser.parse_known_args()
+
+    if matrix_arg.matrix:
+        required_args.add_argument('transition_matrix', type=str, help='Transition Matrix')
+        required_args.add_argument('emission_matrix', type=str, help='Emission Matrix')
+    else:
+        required_args.add_argument('bedMethyl_path', type=str, help='Path to the bedMethyl file')
+        required_args.add_argument('cenSat_path', type=str, help='Path to the CenSat BED file')
     argparser.add_argument('output_path', type=str, help='Output Path for the output files')
 
     # hmmCDR Parser Flags
-    argparser.add_argument('--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
-    argparser.add_argument('--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
-    argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum Valid Coverage to consider a methylation site. (default: 10)')
     argparser.add_argument('--bedgraph', action='store_true', help='Flag indicating if the input is a bedgraph. (default: False)')
+    argparser.add_argument('--rolling_window', type=int, default=0, help='Flag indicating whether or not to use a rolling average and the rolling avg window size. If set to 0 no rolling averages are used. (defualt: 0)')
+    argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum Valid Coverage to consider a methylation site. (default: 10)')
+    argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
+    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
 
     # hmmCDR Priors Flags
-    argparser.add_argument('--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
+    argparser.add_argument('-w', '--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
     argparser.add_argument('--priorCDR_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
     argparser.add_argument('--priorTransition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
     argparser.add_argument('--minCDR_size', type=int, default=3000, help='Minimum size for CDR regions. (default: 3000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
-
-    # Create mutually exclusive group for file input options
-    inputs_group = argparser.add_mutually_exclusive_group(required=False)
-    # Option for providing a single BED file
-    inputs_group.add_argument('--cdr_priors', default=None, type=str, help='Path to the priorCDR bedfile')
-    # Option for providing two matrix TSV files
-    inputs_group.add_argument('--emission_matrix', default=None, type=str, help='Path to the emission matrix TSV file')
-    inputs_group.add_argument('--transition_matrix', default=None, type=str, help='Path to the transition matrix TSV file')
+    argparser.add_argument('--save_intermediates', action='store_true', default=False, help="Set to true if you would like to save intermediates(filtered beds+window means). (default: False)")
 
     # HMM Flags
     argparser.add_argument('--use_percentiles', action='store_true', default=False, help='Use values for flags w,x,y,z as percentile cutoffs for each category. (default: False)')
@@ -312,50 +314,58 @@ def main():
     args = argparser.parse_args()
     output_prefix = os.path.splitext(args.output_path)[0]
 
-    CDRparser = hmmCDRparse(
-        bedMethyl_path=args.bedMethyl_path,
-        cenSat_path=args.cenSat_path,
-        mod_code=args.mod_code,
-        sat_type=args.sat_type,
-        bedgraph=args.bedgraph,
-        min_valid_cov=args.min_valid_cov
-    )
+    # Extract required arguments as variables
+    transition_matrix = getattr(args, 'transition_matrix', None)
+    emission_matrix = getattr(args, 'emission_matrix', None)
+    bedMethyl_path = getattr(args, 'bedMethyl_path', None)
+    cenSat_path = getattr(args, 'cenSat_path', None)
 
-    cenSat = CDRparser.read_cenSat(path=CDRparser.cenSat_path)
-    bedMethyl = CDRparser.read_bedMethyl(path=CDRparser.bedMethyl_path)
-    bed4Methyl_chrom_dict, cenSat_chrom_dict = CDRparser.parse_all_chromosomes(bedMethyl=bedMethyl, cenSat=cenSat)
+    if not args.matrix:
+        CDRparser = hmmCDRparse(
+            bedMethyl_path=bedMethyl_path,
+            cenSat_path=cenSat_path,
+            mod_code=args.mod_code,
+            sat_type=args.sat_type,
+            bedgraph=args.bedgraph,
+            min_valid_cov=args.min_valid_cov,
+            rolling_window=args.rolling_window
+        )
 
-    if args.save_intermediates:
-        concatenated_bed4Methyls = pd.concat(bed4Methyl_chrom_dict.values(), axis=0)
-        concatenated_bed4Methyls.to_csv(f'{output_prefix}_intersected_bed4Methyl.bedgraph', 
-                                        sep='\t', index=False, header=False)
-        concatenated_regions = pd.concat(cenSat_chrom_dict.values(), axis=0)
-        concatenated_regions.to_csv(f'{output_prefix}_selected_regions.bed', 
-                                        sep='\t', index=False, header=False)
-        print(f'Wrote Intermediates: {output_prefix}_intersected_bed4Methyl.bedgraph and {output_prefix}_selected_regions.bed.')
+        cenSat = CDRparser.read_cenSat(path=CDRparser.cenSat_path)
+        bedMethyl = CDRparser.read_bedMethyl(path=CDRparser.bedMethyl_path)
+        bed4Methyl_chrom_dict, cenSat_chrom_dict = CDRparser.parse_all_chromosomes(bedMethyl=bedMethyl, cenSat=cenSat)
 
-    CDRpriors = hmmCDRprior(
-        window_size=args.window_size, 
-        minCDR_size=args.minCDR_size, 
-        priorCDR_percent=args.priorCDR_percent, 
-        priorTransition_percent=args.priorTransition_percent, 
-        enrichment=args.enrichment, 
-        output_label=args.output_label
-    )
+        if args.save_intermediates:
+            concatenated_bed4Methyls = pd.concat(bed4Methyl_chrom_dict.values(), axis=0)
+            concatenated_bed4Methyls.to_csv(f'{output_prefix}_intersected_bed4Methyl.bedgraph', 
+                                            sep='\t', index=False, header=False)
+            concatenated_regions = pd.concat(cenSat_chrom_dict.values(), axis=0)
+            concatenated_regions.to_csv(f'{output_prefix}_selected_regions.bed', 
+                                            sep='\t', index=False, header=False)
+            print(f'Wrote Intermediates: {output_prefix}_intersected_bed4Methyl.bedgraph and {output_prefix}_selected_regions.bed.')
 
-    hmmCDRpriors_chrom_dict = CDRpriors.priors_all_chromosomes(bed4Methyl_chrom_dict=bed4Methyl_chrom_dict)
-    
-    if args.save_intermediates:
-        concatenated_priors = pd.concat(hmmCDRpriors_chrom_dict.values(), axis=0)
-        concatenated_priors.to_csv(f'{output_prefix}_hmmCDRpriors.bed', 
-                                        sep='\t', index=False, header=False)
-        print(f'Wrote Intermediate: {output_prefix}_hmmCDRpriors.bed.')
+        CDRpriors = hmmCDRprior(
+            window_size=args.window_size, 
+            minCDR_size=args.minCDR_size, 
+            priorCDR_percent=args.priorCDR_percent, 
+            priorTransition_percent=args.priorTransition_percent, 
+            enrichment=args.enrichment, 
+            output_label=args.output_label
+        )
+
+        hmmCDRpriors_chrom_dict = CDRpriors.priors_all_chromosomes(bed4Methyl_chrom_dict=bed4Methyl_chrom_dict)
+        
+        if args.save_intermediates:
+            concatenated_priors = pd.concat(hmmCDRpriors_chrom_dict.values(), axis=0)
+            concatenated_priors.to_csv(f'{output_prefix}_hmmCDRpriors.bed', 
+                                            sep='\t', index=False, header=False)
+            print(f'Wrote Intermediate: {output_prefix}_hmmCDRpriors.bed.')
 
     CDRhmm = hmmCDR(
         output_label=args.output_label,
         n_iter=args.n_iter,
-        emission_matrix=args.emission_matrix,
-        transition_matrix=args.transition_matrix,
+        emission_matrix=emission_matrix,
+        transition_matrix=transition_matrix,
         use_percentiles=args.use_percentiles,
         w=args.w, x=args.x, y=args.y, z=args.z
     )
