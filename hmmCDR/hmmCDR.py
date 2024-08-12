@@ -297,7 +297,6 @@ def main():
     argparser.add_argument('--priorTransition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
     argparser.add_argument('--minCDR_size', type=int, default=3000, help='Minimum size for CDR regions. (default: 3000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
-    argparser.add_argument('--save_intermediates', action='store_true', default=False, help="Set to true if you would like to save intermediates(filtered beds+window means). (default: False)")
 
     # HMM Flags
     argparser.add_argument('--use_percentiles', action='store_true', default=False, help='Use values for flags w,x,y,z as percentile cutoffs for each category. (default: False)')
