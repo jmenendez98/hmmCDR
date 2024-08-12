@@ -292,7 +292,7 @@ def main():
     argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
 
     # hmmCDR Priors Flags
-    argparser.add_argument('-w', '--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
+    argparser.add_argument('--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
     argparser.add_argument('--priorCDR_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
     argparser.add_argument('--priorTransition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
     argparser.add_argument('--minCDR_size', type=int, default=3000, help='Minimum size for CDR regions. (default: 3000)')
