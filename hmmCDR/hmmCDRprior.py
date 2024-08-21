@@ -181,13 +181,19 @@ class hmmCDRprior:
         hmmCDRpriors = self.combine_beds(priorCDRs, priorTranstions)
         if hmmCDRpriors.empty:
             print(f'No Priors Detected for {chrom} with settings: CDR Percentile - {self.priorCDR_percent}, Transition Percentile - {self.priorTransition_percent}')
-            if self.retries <= 10:
-                self.priorCDR_percent += 1
-                self.priorTransition_percent += 1
+            
+            if self.retries < 25:
+                if 0 < self.priorCDR_percent < 100:
+                    self.priorCDR_percent += 1
+                if 0 < self.priorTransition_percent < 100:
+                    self.priorTransition_percent += 1
+                self.retries += 1
                 print(f'Retrying with CDR Percentile = {self.priorCDR_percent}, Transition Percentile = {self.priorTransition_percent}')
-                self.priors_single_chromosome(chrom, bed4Methyl_chrom)
+                print(f'This is the {self.retries}/25 retry attempt.')
+                return self.priors_single_chromosome(chrom, bed4Methyl_chrom)
             else:
                 raise RuntimeError(f"Failed to detect priors for {chrom} after {self.retries} retries with final settings: CDR Percentile - {self.priorCDR_percent}, Transition Percentile - {self.priorTransition_percent}")
+
         return chrom, hmmCDRpriors
 
     def priors_all_chromosomes(self, bed4Methyl_chrom_dict):

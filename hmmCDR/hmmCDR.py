@@ -31,52 +31,35 @@ class hmmCDR:
 
         self.emission_matrix = emission_matrix
         self.transition_matrix = transition_matrix
-        '''
-        if priors is not None:
-            # Check the type of priors and handle accordingly
-            if isinstance(priors, pd.DataFrame):
-                priors = priors
-            elif isinstance(priors, str):
-                priors = pd.read_csv(priors, sep='\t', header=None)
-            else:
-                raise ValueError("priors must be a pandas DataFrame or a string path to a file.")
-            
-            labelled_bed4Methyl = self.assign_emmisions(self.assign_priors(self.bed4Methyl))
 
-            self.emission_matrix = self.calculate_emission_matrix(labelled_bed4Methyl)
-            self.transition_matrix = self.calculate_transition_matrix(labelled_bed4Methyl)
-        elif emission_matrix is not None and transition_matrix is not None:
-            labelled_bed4Methyl = self.assign_emmisions(self.bed4Methyl)
-
-            self.emission_matrix = emission_matrix
-            self.transition_matrix = transition_matrix
-            self.priors = None
-        else:
-            raise ValueError("Invalid input: Provide either a priors file or both emission and transition matrix files.")
-            
-        self.labelled_bed4Methyl = self.runHMM(labelled_bed4Methyl, 
-                                                   transition_matrix=self.transition_matrix, 
-                                                   emission_matrix=self.emission_matrix)
-        self.hmmCDR_df = self.create_hmmCDR_df(self.labelled_bed4Methyl)
-        self.hmmCDR_df.to_csv(self.output_path, sep="\t", header=None)        
-        '''
     
     def assign_priors(self, bed4Methyl, priors):
         '''
         DOCSTRING
         '''
+        bed4Methyl['prior'] = 'A' # Create a column for CDR state, default to 'A' (Not in CDR)
         bedMethyl_bedtool = pybedtools.BedTool.from_dataframe(bed4Methyl) # Convert DataFrames to BedTool objects
+
         priorCDR_df = priors[priors[3] == f'{self.output_label}'].drop(columns=[3])
-        priorCDR_bedtool = pybedtools.BedTool.from_dataframe(priorCDR_df)
         priorTransition_df = priors[priors[3] == f'{self.output_label}_transition'].drop(columns=[3])
-        priorTransition_bedtool = pybedtools.BedTool.from_dataframe(priorTransition_df)
-        bed4Methyl['state'] = 'A' # Create a column for CDR state, default to 'A' (Not in CDR)
-        intersected_cdr = bedMethyl_bedtool.intersect(priorCDR_bedtool, wa=True, wb=True) # Label CDR regions as 'C'
-        cdr_df = intersected_cdr.to_dataframe()
-        bed4Methyl.loc[bed4Methyl['start'].isin(cdr_df['start']), 'state'] = 'C' # Update the state based on matching 'start' values
-        intersected_transition = bedMethyl_bedtool.intersect(priorTransition_bedtool, wa=True, wb=True) # Label CDR transition regions as 'B'
-        transition_df = intersected_transition.to_dataframe()
-        bed4Methyl.loc[bed4Methyl['start'].isin(transition_df['start']), 'state'] = 'B' # Update the state based on matching 'start' values
+
+        if not priorCDR_df.empty:
+            priorCDR_bedtool = pybedtools.BedTool.from_dataframe(priorCDR_df)
+            intersected_cdr = bedMethyl_bedtool.intersect(priorCDR_bedtool, wa=True, wb=True) # Label CDR regions as 'C'
+            cdr_df = intersected_cdr.to_dataframe()
+            bed4Methyl.loc[bed4Methyl['start'].isin(cdr_df['start']), 'prior'] = 'C' # Update the state based on matching 'start' values
+        else:
+            print('No Prior CDRs Passed In!')
+
+        if not priorTransition_df.empty:
+            priorTransition_bedtool = pybedtools.BedTool.from_dataframe(priorTransition_df)
+            intersected_transition = bedMethyl_bedtool.intersect(priorTransition_bedtool, wa=True, wb=True) # Label CDR transition regions as 'B'
+            transition_df = intersected_transition.to_dataframe()
+            bed4Methyl.loc[bed4Methyl['start'].isin(transition_df['start']), 'prior'] = 'B' # Update the state based on matching 'start' values
+            self.no_transitions = False
+        else:
+            self.no_transitions = True
+
         return bed4Methyl
 
     def calculate_transition_matrix(self, labeled_bedMethyl_df):
@@ -94,9 +77,9 @@ class hmmCDR:
             'C->B': 0,
             'C->C': 0
         }
-        previous_state = labeled_bedMethyl_df.iloc[0]['state']
+        previous_state = labeled_bedMethyl_df.iloc[0]['prior']
         for i in range(1, len(labeled_bedMethyl_df)):
-            current_state = labeled_bedMethyl_df.iloc[i]['state']
+            current_state = labeled_bedMethyl_df.iloc[i]['prior']
             transitions[f'{previous_state}->{current_state}'] += 1
             previous_state = current_state
         total_A = transitions['A->A'] + transitions['A->B'] + transitions['A->C']
@@ -107,6 +90,13 @@ class hmmCDR:
             [transitions['B->A'] / total_B if total_B else 0, transitions['B->B'] / total_B if total_B else 0, transitions['B->C'] / total_B if total_B else 0],
             [transitions['C->A'] / total_C if total_C else 0, transitions['C->B'] / total_C if total_C else 0, transitions['C->C'] / total_C if total_C else 0]
         ]
+        if self.no_transitions:
+            transition_matrix = [
+            [transitions['A->A'] / total_A if total_A else 0, transitions['A->C'] / (2 * total_A) if total_A else 0, transitions['A->C'] / (2 * total_A) if total_A else 0],
+            [transitions['C->A'] / (2 * total_C) if total_C else 0, transitions['C->C'] if total_C else 0, transitions['C->C'] / (2 * total_C) if total_C else 0],
+            [transitions['C->A'] / (2 * total_C) if total_C else 0, transitions['C->A'] / (2 * total_C) if total_C else 0, transitions['C->C'] / total_C if total_C else 0]
+        ]
+
         return transition_matrix
     
     def calculate_emission_thresholds(self, bed4Methyl):
@@ -137,7 +127,7 @@ class hmmCDR:
         '''
         DOCSTRING
         '''
-        emission_counts = labeled_bedMethyl.groupby(['state', 'emission']).size().unstack(fill_value=0) # Get the counts of each emission in each state
+        emission_counts = labeled_bedMethyl.groupby(['prior', 'emission']).size().unstack(fill_value=0) # Get the counts of each emission in each state
         emission_matrix = emission_counts.div(emission_counts.sum(axis=1), axis=0) # Normalize counts to probabilities to get the emission matrix
         return emission_matrix
 
@@ -178,7 +168,7 @@ class hmmCDR:
             # Extract regions with the specified state
             state_df = df[df['predicted_state'] == state_value].copy()
             # Ensure columns are correctly named for pybedtools
-            state_df.columns = ['chrom', 'start', 'end', 'name', 'state', 'emission', 'predicted_state']
+            state_df.columns = ['chrom', 'start', 'end', 'name', 'prior', 'emission', 'predicted_state']
             # Convert to a BedTool object
             state_bedtool = pybedtools.BedTool.from_dataframe(state_df[['chrom', 'start', 'end', 'name']])
             # Merge adjacent entries within the specified distance
@@ -210,9 +200,9 @@ class hmmCDR:
     
     def hmm_single_chromosome(self, chrom, bed4Methyl_chrom, priors_chrom):
         if self.emission_matrix is None and self.transition_matrix is None:
-            print('chromosome:', chrom, '\n', bed4Methyl_chrom, '\n', priors_chrom)
             labelled_bed4Methyl_chrom = self.assign_emmisions(self.assign_priors(bed4Methyl_chrom, priors_chrom), 
                                                               self.calculate_emission_thresholds(bed4Methyl_chrom))
+            print( labelled_bed4Methyl_chrom ) 
             emission_matrix = self.calculate_emission_matrix(labelled_bed4Methyl_chrom)
             transition_matrix = self.calculate_transition_matrix(labelled_bed4Methyl_chrom)
         else:
@@ -220,6 +210,9 @@ class hmmCDR:
                                                               self.calculate_emission_thresholds(bed4Methyl_chrom))
             emission_matrix = self.emission_matrix
             transition_matrix = self.transition_matrix
+        print('Chromsome:', chrom, '\n',
+              'transition_matrix:\n', transition_matrix, '\n', 
+              'emission_matrix:\n',emission_matrix)
         hmmlabelled_bed4Methyl = self.runHMM(labelled_bed4Methyl_chrom,
                                              transition_matrix=transition_matrix,
                                              emission_matrix=emission_matrix)
@@ -293,14 +286,14 @@ def main():
     argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
 
     # hmmCDR Priors Flags
-    argparser.add_argument('--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
-    argparser.add_argument('--priorCDR_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
-    argparser.add_argument('--priorTransition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
-    argparser.add_argument('--minCDR_size', type=int, default=3000, help='Minimum size for CDR regions. (default: 3000)')
+    argparser.add_argument('--window_size', type=int, default=510, help='Window size to calculate prior regions. (default: 510)')
+    argparser.add_argument('--priorCDR_percent', type=int, default=10, help='Percentile for finding priorCDR regions. (default: 10)')
+    argparser.add_argument('--priorTransition_percent', type=int, default=20, help='Percentile for finding priorTransition regions. (default: 20)')
+    argparser.add_argument('--minCDR_size', type=int, default=1000, help='Minimum size for CDR regions. (default: 1000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
 
     # HMM Flags
-    argparser.add_argument('--use_percentiles', action='store_true', default=False, help='Use values for flags w,x,y,z as percentile cutoffs for each category. (default: False)')
+    argparser.add_argument('--use_percentiles', action='store_true', default=True, help='Use values for flags w,x,y,z as percentile cutoffs for each category. (default: True)')
     argparser.add_argument('--n_iter', type=int, default=1, help='Maximum number of iteration allowed for the HMM. (default: 1)')
     argparser.add_argument('-w', type=int, default=0, help='Theshold for methylation to be classified as very low (default: 0)')
     argparser.add_argument('-x', type=int, default=25, help='Theshold for methylation to be classified as low (default: 25)')
@@ -342,7 +335,7 @@ def main():
             concatenated_regions = pd.concat(cenSat_chrom_dict.values(), axis=0)
             concatenated_regions.to_csv(f'{output_prefix}_selected_regions.bed', 
                                             sep='\t', index=False, header=False)
-            print(f'Wrote Intermediates: {output_prefix}_intersected_bed4Methyl.bedgraph and {output_prefix}_selected_regions.bed.')
+            print(f'Wrote Intermediates: {output_prefix}_intersected_bed4Methyl.bedgraph and {output_prefix}_selected_regions.bed')
 
         CDRpriors = hmmCDRprior(
             window_size=args.window_size, 
@@ -359,7 +352,7 @@ def main():
             concatenated_priors = pd.concat(hmmCDRpriors_chrom_dict.values(), axis=0)
             concatenated_priors.to_csv(f'{output_prefix}_hmmCDRpriors.bed', 
                                             sep='\t', index=False, header=False)
-            print(f'Wrote Intermediate: {output_prefix}_hmmCDRpriors.bed.')
+            print(f'Wrote Intermediate: {output_prefix}_hmmCDRpriors.bed')
 
     CDRhmm = hmmCDR(
         output_label=args.output_label,
@@ -377,7 +370,7 @@ def main():
         concatenated_hmmCDR_labelled_bed4Methyl = pd.concat(hmm_labelled_bed4Methyl_chrom_dict.values(), axis=0)
         concatenated_hmmCDR_labelled_bed4Methyl.to_csv(f'{output_prefix}_hmmCDR_labelled_bed4Methyl.bed', 
                                                        sep='\t', index=False, header=False)
-        print(f'Wrote Intermediate: {output_prefix}_hmmCDR_labelled_bed4Methyl.bed.')
+        print(f'Wrote Intermediate: {output_prefix}_hmmCDR_labelled_bed4Methyl.bed')
 
     # Combine all chromosomes and save the output
     concatenated_hmmCDRs = pd.concat(hmmCDRresults_chrom_dict.values(), axis=0)
