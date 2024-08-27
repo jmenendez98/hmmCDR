@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='hmmCDR',
-    version='0.3.0',
+    version='0.1.0',
     description="Used pybedtools and hmmlearn to find precise locations of CDRs and subCDRs.",
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
@@ -14,7 +14,8 @@ setup(
     install_requires=[
         'numpy',
         'pandas',
-        'pybedtools'
+        'pybedtools',
+        'hmmlearn'
     ],
     entry_points={
         'console_scripts': [

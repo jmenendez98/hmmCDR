@@ -119,7 +119,7 @@ class hmmCDRparse:
             raise ValueError("Filtering bedMethyl by the specified modification code resulted in an empty DataFrame.")
         return bed4Methyl
 
-    def filter_cenSat(self, cenSat, sat_type):
+    def filter_cenSat(self, cenSat, sat_types):
         '''
         Filters the CenSat DataFrame by the specified satellite type.
 
@@ -141,7 +141,7 @@ class hmmCDRparse:
             If the filtering results in an empty DataFrame.
         '''
         if len(cenSat.columns) > 3:
-            filtered_cenSat = cenSat[cenSat[3].str.contains(sat_type)]
+            filtered_cenSat = cenSat[cenSat[3].str.contains('|'.join(sat_types))]
             if filtered_cenSat.empty:
                 raise ValueError("Filtering CenSat by the specified satellite type resulted in an empty DataFrame.")
         else:
@@ -190,9 +190,11 @@ class hmmCDRparse:
         bed4Methyl = bed4Methyl.sort_values(by=bed4Methyl.columns[1])
 
         # Calculate the rolling sum based on the start and end positions
-        rolling_avg = bed4Methyl.apply(lambda row: bed4Methyl[(bed4Methyl.iloc[:, 1] >= row[1] - rolling_size) & 
-                                                              (bed4Methyl.iloc[:, 1] <= row[2])].iloc[:, -1].sum() / rolling_size, axis=1)
-
+        # Calculate the rolling sum based on the start and end positions
+        rolling_avg = bed4Methyl.apply(lambda row: round(
+            bed4Methyl[(bed4Methyl.iloc[:, 1] >= row[1] - rolling_size) & 
+                       (bed4Methyl.iloc[:, 1] <= row[2])].iloc[:, -1].sum() / rolling_size, 5), axis=1)
+        
         return rolling_avg
 
     def parse_single_chromosome(self, chrom, bedMethyl, cenSat):
@@ -256,13 +258,15 @@ def main():
     argparser.add_argument('--rolling_window', type=int, default=0, help='Flag indicating whether or not to use a rolling average and the rolling avg window size. If set to 0 no rolling averages are used. (defualt: 0)')
     argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum Valid Coverage to consider a methylation site. (default: 10)')
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
-    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
+    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
     args = argparser.parse_args()
+
+    sat_types = [st.strip() for st in args.sat_type.split(',')]
 
     hmmCDRparser = hmmCDRparse(bedMethyl_path=args.bedMethyl_path,
                                cenSat_path=args.cenSat_path,
                                mod_code=args.mod_code,
-                               sat_type=args.sat_type,
+                               sat_type=sat_types,
                                bedgraph=args.bedgraph,
                                min_valid_cov=args.min_valid_cov,
                                rolling_window=args.rolling_window)

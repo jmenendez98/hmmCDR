@@ -15,7 +15,7 @@ class hmmCDRprior:
     percentiles, and minimum region size. The results are combined into
     a BED file format.
     '''
-    def __init__(self, window_size=1020, minCDR_size=3000,
+    def __init__(self, merge_distance, window_size=1020, minCDR_size=3000,
                  priorCDR_percent=5, priorTransition_percent=10, 
                  enrichment=False, output_label='CDR'):
         '''
@@ -41,6 +41,7 @@ class hmmCDRprior:
         self.priorTransition_percent = priorTransition_percent
         self.enrichment = enrichment
         self.output_label = output_label
+        self.merge_distance = merge_distance
 
         self.retries = 0
         
@@ -100,7 +101,7 @@ class hmmCDRprior:
         priorTransition_score = np.percentile(mean_values, q=self.priorTransition_percent)
         return priorCDR_score, priorTransition_score
 
-    def create_priorCDR_dataframe(self, windows_mean_df, priorCDR_score):
+    def create_priorCDR_dataframe(self, merge_distance, windows_mean_df, priorCDR_score):
         '''
         Creates a DataFrame of prior CDR regions based on the calculated score.
 
@@ -114,11 +115,11 @@ class hmmCDRprior:
         windows_mean_df['mean_value'] = pd.to_numeric(windows_mean_df['mean_value'], errors='coerce')
         windows_mean_df = windows_mean_df.dropna(subset=['mean_value'])
         if self.enrichment:
-            windows_below_priorCDR_score = windows_mean_df[windows_mean_df['mean_value'] > priorCDR_score]
+            priorCDR_windows = windows_mean_df[windows_mean_df['mean_value'] > priorCDR_score]
         else:
-            windows_below_priorCDR_score = windows_mean_df[windows_mean_df['mean_value'] < priorCDR_score]
-        windows_bedtool = pybedtools.BedTool.from_dataframe(windows_below_priorCDR_score)
-        merged_windows = windows_bedtool.merge()
+            priorCDR_windows = windows_mean_df[windows_mean_df['mean_value'] < priorCDR_score]
+        windows_bedtool = pybedtools.BedTool.from_dataframe(priorCDR_windows)
+        merged_windows = windows_bedtool.merge(d=merge_distance)
         merged_df = merged_windows.to_dataframe(names=[0, 1, 2])
         merged_df['size'] = merged_df[2] - merged_df[1]
         filtered_merged_df = merged_df[merged_df['size'] >= self.minCDR_size]
@@ -247,7 +248,7 @@ def main():
     
     # Parser Arguments
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
-    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
+    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
     argparser.add_argument('--bedgraph', action='store_true', help='Flag indicating if the input is a bedgraph. (default: False)')
     argparser.add_argument('--rolling_window', type=int, default=0, help='Flag indicating whether or not to use a rolling average and the rolling avg window size. If set to 0 no rolling averages are used. (defualt: 0)')
     argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum Valid Coverage to consider a methylation site. (default: 10)')
@@ -256,6 +257,7 @@ def main():
     argparser.add_argument('-w', '--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
     argparser.add_argument('--priorCDR_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
     argparser.add_argument('--priorTransition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
+    argparser.add_argument('--prior_merge_distance', type=int, default=1021, help='Percentile for finding priorTransition regions. (default: 1021)')
     argparser.add_argument('--minCDR_size', type=int, default=3000, help='Minimum size for CDR regions. (default: 3000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
     argparser.add_argument('--save_intermediates', action='store_true', default=False, help="Set to true if you would like to save intermediates(filtered beds+window means). (default: False)")
@@ -263,11 +265,13 @@ def main():
     
     args = argparser.parse_args()
 
+    sat_types = [st.strip() for st in args.sat_type.split(',')]
+
     parser = hmmCDRparse(
         bedMethyl_path=args.bedMethyl_path,
         cenSat_path=args.cenSat_path,
         mod_code=args.mod_code,
-        sat_type=args.sat_type,
+        sat_type=sat_types,
         rolling_window=args.rolling_window,
         bedgraph=args.bedgraph
     )
@@ -281,6 +285,7 @@ def main():
         minCDR_size=args.minCDR_size,
         priorCDR_percent=args.priorCDR_percent,
         priorTransition_percent=args.priorTransition_percent,
+        merge_distance=args.prior_merge_distance, 
         enrichment=args.enrichment,
         output_label=args.output_label
     )

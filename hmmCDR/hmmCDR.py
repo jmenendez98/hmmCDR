@@ -17,7 +17,7 @@ class hmmCDR:
     '''
     def __init__(self, output_label, n_iter,
                  emission_matrix=None, transition_matrix=None,
-                 use_percentiles=False,
+                 raw_thresholds=False,
                  w=0, x=25, y=50, z=75):
         '''
         INIT DOCSTRING
@@ -25,7 +25,7 @@ class hmmCDR:
         # all hmmCDR class parameters are optional
         self.output_label = output_label
         self.n_iter = n_iter
-        self.use_percentiles = use_percentiles
+        self.raw_thresholds = raw_thresholds
 
         self.w, self.x, self.y, self.z = w, x, y, z
 
@@ -102,24 +102,24 @@ class hmmCDR:
     def calculate_emission_thresholds(self, bed4Methyl):
         bed4Methyl['name'].replace('.', np.nan, inplace=True)
         methylation_scores = bed4Methyl['name'].dropna().astype(float)
-        if self.use_percentiles:
-            return [np.percentile(methylation_scores, q=percentile) for percentile in [self.w, self.x, self.y, self.z]]
+        non_zeros = methylation_scores[methylation_scores != 0]
+        methylation_scores = [0] + non_zeros
+        if not self.raw_thresholds:
+            thresholds = [np.percentile(methylation_scores, q=percentile) for percentile in [self.w, self.x, self.y, self.z]]
         else:
-            return [self.w, self.x, self.y, self.z]
+            thresholds = [self.w, self.x, self.y, self.z]
+        return sorted(set(thresholds))
 
-    def assign_emmisions(self, bed4Methyl, emission_thesholds):
+    def assign_emmisions(self, bed4Methyl, emission_thresholds):
         '''
         DOCSTRING
         '''
         def emissions_helper(value):
-            if value > emission_thesholds[3]:
-                return 3
-            elif value > emission_thesholds[2]:
-                return 2
-            elif value > emission_thesholds[1]:
-                return 1
-            elif value >= emission_thesholds[0]:
-                return 0
+            for i, threshold in enumerate(emission_thresholds):
+                if value <= threshold:
+                    return i
+            return len(emission_thresholds)-1    
+        
         bed4Methyl['emission'] = bed4Methyl['name'].apply(emissions_helper)
         return bed4Methyl
 
@@ -127,8 +127,36 @@ class hmmCDR:
         '''
         DOCSTRING
         '''
-        emission_counts = labeled_bedMethyl.groupby(['prior', 'emission']).size().unstack(fill_value=0) # Get the counts of each emission in each state
-        emission_matrix = emission_counts.div(emission_counts.sum(axis=1), axis=0) # Normalize counts to probabilities to get the emission matrix
+        emission_matrix = np.zeros((3, 4))
+        emission_counts = labeled_bedMethyl.groupby(['prior', 'emission']).size().unstack(fill_value=0)
+
+        # Map prior states to indices (assuming 'A' -> 0, 'B' -> 1, 'C' -> 2)
+        state_mapping = {'A': 0, 'B': 1, 'C': 2}
+
+        # Ensure all expected indices and columns are present
+        for prior, i in state_mapping.items():  # Loop over the mapped states (A -> 0, B -> 1, C -> 2)
+            if prior not in emission_counts.index:
+                # Create a new Series with zeros and the same columns as emission_counts
+                new_row = pd.Series([0] * len(emission_counts.columns), index=emission_counts.columns, name=prior)
+                # Append this Series to the DataFrame
+                emission_counts = emission_counts.append(new_row)
+        
+        for j in range(4):  # Loop over the emissions (0, 1, 2, 3)
+            if j not in emission_counts.columns:
+                emission_counts[j] = 0
+        
+        # Populate the emission matrix
+        for prior, i in state_mapping.items():  # Loop over the mapped states (A -> 0, B -> 1, C -> 2)
+            if prior in emission_counts.index:
+                total = emission_counts.loc[prior].sum()
+
+                for j in range(4):  # Loop over the emissions (0, 1, 2, 3)
+                    if j in emission_counts.columns and total > 0:
+                        emission_matrix[i, j] = emission_counts.loc[prior, j] / total
+                    else:
+                        emission_matrix[i, j] = 0  # Ensure zero entry if no emissions or total is zero
+
+
         return emission_matrix
 
     def runHMM(self, emission_labelled_bed4Methyl, transition_matrix, emission_matrix):
@@ -150,10 +178,8 @@ class hmmCDR:
         model.startprob_ = np.array([1.0, 0.0, 0.0])
         # Set the transition matrix
         model.transmat_ = transition_matrix
-        #print('TransMat:', model.transmat_.shape, '\n', model.transmat_)
         # Set the emission matrix
         model.emissionprob_ = emission_matrix
-        #print('EmisMat:', model.emissionprob_.shape, '\n', model.emissionprob_)
         emission_data = emission_labelled_bed4Methyl['emission'].to_numpy().reshape(-1, 1)
         # Predict the hidden states
         logprob, predicted_states = model.decode(emission_data, algorithm="viterbi")
@@ -202,7 +228,6 @@ class hmmCDR:
         if self.emission_matrix is None and self.transition_matrix is None:
             labelled_bed4Methyl_chrom = self.assign_emmisions(self.assign_priors(bed4Methyl_chrom, priors_chrom), 
                                                               self.calculate_emission_thresholds(bed4Methyl_chrom))
-            print( labelled_bed4Methyl_chrom ) 
             emission_matrix = self.calculate_emission_matrix(labelled_bed4Methyl_chrom)
             transition_matrix = self.calculate_transition_matrix(labelled_bed4Methyl_chrom)
         else:
@@ -210,9 +235,6 @@ class hmmCDR:
                                                               self.calculate_emission_thresholds(bed4Methyl_chrom))
             emission_matrix = self.emission_matrix
             transition_matrix = self.transition_matrix
-        print('Chromsome:', chrom, '\n',
-              'transition_matrix:\n', transition_matrix, '\n', 
-              'emission_matrix:\n',emission_matrix)
         hmmlabelled_bed4Methyl = self.runHMM(labelled_bed4Methyl_chrom,
                                              transition_matrix=transition_matrix,
                                              emission_matrix=emission_matrix)
@@ -283,7 +305,7 @@ def main():
     argparser.add_argument('--rolling_window', type=int, default=0, help='Flag indicating whether or not to use a rolling average and the rolling avg window size. If set to 0 no rolling averages are used. (defualt: 0)')
     argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum Valid Coverage to consider a methylation site. (default: 10)')
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
-    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Satellite type/name to filter CenSat bed file. (default: "H1L")')
+    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
 
     # hmmCDR Priors Flags
     argparser.add_argument('--window_size', type=int, default=510, help='Window size to calculate prior regions. (default: 510)')
@@ -293,12 +315,12 @@ def main():
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
 
     # HMM Flags
-    argparser.add_argument('--use_percentiles', action='store_true', default=True, help='Use values for flags w,x,y,z as percentile cutoffs for each category. (default: True)')
+    argparser.add_argument('--raw_thresholds', action='store_true', default=False, help='Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: True)')
     argparser.add_argument('--n_iter', type=int, default=1, help='Maximum number of iteration allowed for the HMM. (default: 1)')
-    argparser.add_argument('-w', type=int, default=0, help='Theshold for methylation to be classified as very low (default: 0)')
-    argparser.add_argument('-x', type=int, default=25, help='Theshold for methylation to be classified as low (default: 25)')
-    argparser.add_argument('-y', type=int, default=50, help='Theshold for methylation to be classified as medium (default: 50)')
-    argparser.add_argument('-z', type=int, default=75, help='Theshold for methylation to be classified as high (default: 75)')
+    argparser.add_argument('-w', type=int, default=0, help='Threshold of non-zero methylation percentile to be classified as very low (default: 0)')
+    argparser.add_argument('-x', type=int, default=25, help='Threshold of non-zero methylation percentile to be classified as low (default: 25)')
+    argparser.add_argument('-y', type=int, default=50, help='Threshold of non-zero methylation percentile to be classified as medium (default: 50)')
+    argparser.add_argument('-z', type=int, default=75, help='Threshold of non-zero methylation percentile to be classified as high (default: 75)')
 
     # Shared Flags
     argparser.add_argument('--save_intermediates', action='store_true', default=False, help="Set to true if you would like to save intermediates(filtered beds+window means). (default: False)")
@@ -306,6 +328,8 @@ def main():
 
     args = argparser.parse_args()
     output_prefix = os.path.splitext(args.output_path)[0]
+
+    sat_types = [st.strip() for st in args.sat_type.split(',')]
 
     # Extract required arguments as variables
     transition_matrix = getattr(args, 'transition_matrix', None)
@@ -318,7 +342,7 @@ def main():
             bedMethyl_path=bedMethyl_path,
             cenSat_path=cenSat_path,
             mod_code=args.mod_code,
-            sat_type=args.sat_type,
+            sat_type=sat_types,
             bedgraph=args.bedgraph,
             min_valid_cov=args.min_valid_cov,
             rolling_window=args.rolling_window
@@ -342,6 +366,7 @@ def main():
             minCDR_size=args.minCDR_size, 
             priorCDR_percent=args.priorCDR_percent, 
             priorTransition_percent=args.priorTransition_percent, 
+            merge_distance=args.prior_merge_distance, 
             enrichment=args.enrichment, 
             output_label=args.output_label
         )
@@ -359,7 +384,7 @@ def main():
         n_iter=args.n_iter,
         emission_matrix=emission_matrix,
         transition_matrix=transition_matrix,
-        use_percentiles=args.use_percentiles,
+        raw_thresholds=args.raw_thresholds,
         w=args.w, x=args.x, y=args.y, z=args.z
     )
 
