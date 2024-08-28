@@ -311,6 +311,7 @@ def main():
     argparser.add_argument('--window_size', type=int, default=510, help='Window size to calculate prior regions. (default: 510)')
     argparser.add_argument('--priorCDR_percent', type=int, default=10, help='Percentile for finding priorCDR regions. (default: 10)')
     argparser.add_argument('--priorTransition_percent', type=int, default=20, help='Percentile for finding priorTransition regions. (default: 20)')
+    argparser.add_argument('--prior_merge_distance', type=int, default=1021, help='Percentile for finding priorTransition regions. (default: 1021)')
     argparser.add_argument('--minCDR_size', type=int, default=1000, help='Minimum size for CDR regions. (default: 1000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
 
@@ -339,8 +340,6 @@ def main():
 
     if not args.matrix:
         CDRparser = hmmCDRparse(
-            bedMethyl_path=bedMethyl_path,
-            cenSat_path=cenSat_path,
             mod_code=args.mod_code,
             sat_type=sat_types,
             bedgraph=args.bedgraph,
@@ -348,9 +347,8 @@ def main():
             rolling_window=args.rolling_window
         )
 
-        cenSat = CDRparser.read_cenSat(path=CDRparser.cenSat_path)
-        bedMethyl = CDRparser.read_bedMethyl(path=CDRparser.bedMethyl_path)
-        bed4Methyl_chrom_dict, cenSat_chrom_dict = CDRparser.parse_all_chromosomes(bedMethyl=bedMethyl, cenSat=cenSat)
+        bed4Methyl_chrom_dict, cenSat_chrom_dict = CDRparser.parse_all_chromosomes(bedMethyl_path=bedMethyl_path, 
+                                                                                   cenSat_path=cenSat_path)
 
         if args.save_intermediates:
             concatenated_bed4Methyls = pd.concat(bed4Methyl_chrom_dict.values(), axis=0)
@@ -391,11 +389,14 @@ def main():
     hmmCDRresults_chrom_dict, hmm_labelled_bed4Methyl_chrom_dict = CDRhmm.hmm_all_chromosomes(bed4Methyl_chrom_dict=bed4Methyl_chrom_dict, 
                                                                                               priors_chrom_dict=hmmCDRpriors_chrom_dict)
 
+    '''
+    # Debug 
     if args.save_intermediates:
         concatenated_hmmCDR_labelled_bed4Methyl = pd.concat(hmm_labelled_bed4Methyl_chrom_dict.values(), axis=0)
         concatenated_hmmCDR_labelled_bed4Methyl.to_csv(f'{output_prefix}_hmmCDR_labelled_bed4Methyl.bed', 
                                                        sep='\t', index=False, header=False)
         print(f'Wrote Intermediate: {output_prefix}_hmmCDR_labelled_bed4Methyl.bed')
+    '''
 
     # Combine all chromosomes and save the output
     concatenated_hmmCDRs = pd.concat(hmmCDRresults_chrom_dict.values(), axis=0)

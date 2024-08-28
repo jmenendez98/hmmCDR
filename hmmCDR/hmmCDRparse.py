@@ -29,7 +29,7 @@ class hmmCDRparse:
         The DataFrame containing intersected regions between the filtered 
         bedMethyl and CenSat files.
     '''
-    def __init__(self, bedMethyl_path, cenSat_path, min_valid_cov, rolling_window,
+    def __init__(self, min_valid_cov, rolling_window,
                  mod_code, sat_type, bedgraph=False):
         '''
         Initializes the hmmCDR_parser class by reading and processing the bedMethyl 
@@ -56,9 +56,6 @@ class hmmCDRparse:
             based on the bedgraph flag.
         '''
 
-        self.bedMethyl_path = bedMethyl_path
-        self.cenSat_path = cenSat_path
-
         self.mod_code = mod_code
         self.sat_type = sat_type
         self.bedgraph = bedgraph
@@ -70,14 +67,14 @@ class hmmCDRparse:
         # Check if bedMethyl file exists and is not empty
         if not os.path.exists(path) or os.stat(path).st_size == 0:
             raise ValueError(f"bedMethyl file {path} does not exist or is empty.")
-        bedMethyl = pd.read_csv(path, sep='\t', header=None)
+        bedMethyl = pd.read_csv(path, sep='\t', header=None, index_col=None)
         return bedMethyl
     
     def read_cenSat(self, path):
         # Check if cenSat file exists and is not empty
         if not os.path.exists(path) or os.stat(path).st_size == 0:
             raise ValueError(f"cenSat file {path} does not exist or is empty.")
-        cenSat = pd.read_csv(path, sep='\t', header=None)
+        cenSat = pd.read_csv(path, sep='\t', header=None, index_col=None)
         return cenSat
 
     def filter_bedMethyl(self, bedMethyl, mod_code, min_valid_cov):
@@ -105,12 +102,13 @@ class hmmCDRparse:
         '''
         if self.bedgraph:
             if len(bedMethyl.columns) != 4:
-                raise ValueError("Valid bedgraph must have 4 columns when the bedgraph flag is passed.")
+                raise ValueError("Valid bedgraph should have 4 columns(all tab separated) when the bedgraph flag is passed.")
             bed4Methyl = bedMethyl
             return bed4Methyl
         
         if len(bedMethyl.columns) != 18:
-                raise ValueError("Valid bedMethyl must have 18 columns when the bedgraph flag is not passed.")
+            
+            raise ValueError("Valid bedMethyl should have 18 columns(all tab separated) when the bedgraph flag is not passed.")
 
         filtered_bedMethyl = bedMethyl[bedMethyl[3] == mod_code]
         filtered_bedMethyl = bedMethyl[bedMethyl[4] >= min_valid_cov]
@@ -197,23 +195,27 @@ class hmmCDRparse:
         
         return rolling_avg
 
-    def parse_single_chromosome(self, chrom, bedMethyl, cenSat):
-            '''
-            Processes the bedMethyl and CenSat data for each chromosome separately.
+    def parse_single_chromosome(self, chrom, bedMethyl_path, cenSat_path):
+        '''
+        Processes the bedMethyl and CenSat data for each chromosome separately.
 
-            Returns:
-            --------
-            dict
-                A dictionary where the key is the chromosome name, and the value is a tuple 
-                containing two DataFrames: (filtered bedMethyl, intersected bedMethyl-CenSat).
-            '''
-            bedMethyl_filtered = self.filter_bedMethyl(bedMethyl, self.mod_code, self.min_valid_cov)
-            cenSat_filtered = self.filter_cenSat(cenSat, self.sat_type)
-            intersected = self.intersect_files(bedMethyl_filtered, cenSat_filtered)
-            intersected.iloc[:, -1] = self.calculate_rolling_average(intersected, self.rolling_window)
-            return chrom, intersected, cenSat_filtered
+        Returns:
+        --------
+        tuple
+            A tuple containing the chromosome name, intersected DataFrame, and filtered CenSat DataFrame.
+        '''
+        # Read and filter data within the worker function to avoid passing large DataFrames
+        bedMethyl = self.read_bedMethyl(bedMethyl_path)
+        cenSat = self.read_cenSat(cenSat_path)
 
-    def parse_all_chromosomes(self, bedMethyl, cenSat):
+        bedMethyl_filtered = self.filter_bedMethyl(bedMethyl, self.mod_code, self.min_valid_cov)
+        cenSat_filtered = self.filter_cenSat(cenSat, self.sat_type)
+        intersected = self.intersect_files(bedMethyl_filtered, cenSat_filtered)
+        intersected.iloc[:, -1] = self.calculate_rolling_average(intersected, self.rolling_window)
+
+        return chrom, intersected, cenSat_filtered
+
+    def parse_all_chromosomes(self, bedMethyl_path, cenSat_path):
         '''
         Processes all chromosomes in parallel using concurrent futures.
 
@@ -224,14 +226,15 @@ class hmmCDRparse:
         '''
         bed4Methyl_chrom_dict = {}
         cenSat_chrom_dict = {}
-        chromosomes = cenSat[0].unique()  # Assumes chromosome IDs are in the first column
+
+        # Read chromosome list without loading large DataFrames into memory
+        cenSat = pd.read_csv(cenSat_path, sep='\t', header=None)
+        chromosomes = cenSat[0].unique()
 
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {
                 executor.submit(
-                    self.parse_single_chromosome, chrom,
-                    bedMethyl[bedMethyl[0] == chrom],
-                    cenSat[cenSat[0] == chrom]
+                    self.parse_single_chromosome, chrom, bedMethyl_path, cenSat_path
                 ): chrom for chrom in chromosomes
             }
 
@@ -271,9 +274,7 @@ def main():
                                min_valid_cov=args.min_valid_cov,
                                rolling_window=args.rolling_window)
 
-    cenSat = hmmCDRparser.read_cenSat(path=hmmCDRparser.cenSat_path)
-    bedMethyl = hmmCDRparser.read_bedMethyl(path=hmmCDRparser.bedMethyl_path)
-    bed4Methyl_chrom_dict, cenSat_chrom_dict = hmmCDRparser.parse_all_chromosomes(bedMethyl=bedMethyl, cenSat=cenSat)
+    bed4Methyl_chrom_dict, cenSat_chrom_dict = hmmCDRparser.parse_all_chromosomes(bedMethyl_path=args.bedMethyl_path, cenSat_path=args.cenSat_path)
     
     concatenated_bed4Methyl = pd.concat(bed4Methyl_chrom_dict.values())
     concatenated_cenSat = pd.concat(cenSat_chrom_dict.values())

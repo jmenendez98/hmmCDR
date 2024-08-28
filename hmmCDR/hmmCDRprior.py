@@ -177,7 +177,7 @@ class hmmCDRprior:
         windows = self.create_windows(bed4Methyl_chrom)
         windows_mean = self.mean_within_windows(bed4Methyl_chrom, windows)
         cdr_score, transition_score = self.calculate_prior_percentiles(windows_mean)
-        priorCDRs = self.create_priorCDR_dataframe(windows_mean, cdr_score)
+        priorCDRs = self.create_priorCDR_dataframe(self.merge_distance ,windows_mean, cdr_score)
         priorTranstions = self.create_priorTransition_dataframe(windows_mean, transition_score, priorCDRs)
         hmmCDRpriors = self.combine_beds(priorCDRs, priorTranstions)
         if hmmCDRpriors.empty:
@@ -267,18 +267,16 @@ def main():
 
     sat_types = [st.strip() for st in args.sat_type.split(',')]
 
-    parser = hmmCDRparse(
-        bedMethyl_path=args.bedMethyl_path,
-        cenSat_path=args.cenSat_path,
-        mod_code=args.mod_code,
-        sat_type=sat_types,
-        rolling_window=args.rolling_window,
-        bedgraph=args.bedgraph
-    )
+    CDRparser = hmmCDRparse(
+            mod_code=args.mod_code,
+            sat_type=sat_types,
+            bedgraph=args.bedgraph,
+            min_valid_cov=args.min_valid_cov,
+            rolling_window=args.rolling_window
+        )
 
-    cenSat = parser.read_cenSat(path=parser.cenSat_path)
-    bedMethyl = parser.read_bedMethyl(path=parser.bedMethyl_path)
-    bed4Methyl_chrom_dict, cenSat_chrom_dict = parser.parse_all_chromosomes(bedMethyl=bedMethyl, cenSat=cenSat)
+    bed4Methyl_chrom_dict, cenSat_chrom_dict = CDRparser.parse_all_chromosomes(bedMethyl_path=args.bedMethyl_path, 
+                                                                               cenSat_path=args.cenSat_path)
 
     priors = hmmCDRprior(
         window_size=args.window_size,
