@@ -15,8 +15,8 @@ class hmmCDRprior:
     percentiles, and minimum region size. The results are combined into
     a BED file format.
     '''
-    def __init__(self, merge_distance, window_size=1020, minCDR_size=3000,
-                 priorCDR_percent=5, priorTransition_percent=10, 
+    def __init__(self, merge_distance=1021, window_size=1020, minCDR_size=3000,
+                 prior_percent=5, prior_transition_percent=10, 
                  enrichment=False, output_label='CDR'):
         '''
         Initializes the hmmCDR_priors class with the given parameters and
@@ -27,8 +27,8 @@ class hmmCDRprior:
         - output_path (str): Path where the output BED file will be saved.
         - window_size (int): Size of the windows used to calculate prior regions. Default is 1020.
         - minCDR_size (int): Minimum size for CDR regions. Default is 3000.
-        - priorCDR_percent (int): Percentile for identifying prior CDR regions. Default is 5.
-        - priorTransition_percent (int): Percentile for identifying prior transition regions. Default is 10.
+        - prior_percent (int): Percentile for identifying prior CDR regions. Default is 5.
+        - prior_transition_percent (int): Percentile for identifying prior transition regions. Default is 10.
         - output_label (str): Label used in the output BED file for CDR regions. Default is 'CDR'.
         - enrichment (bool): Flag to indicate if looking for methylation-enriched regions. Default is False.
         - save_intermediates (bool): Flag to indicate if intermediate files should be saved. Default is False.
@@ -37,8 +37,8 @@ class hmmCDRprior:
         # all hmmCDR_prior parameters can be optionally changed
         self.window_size = window_size
         self.minCDR_size = minCDR_size
-        self.priorCDR_percent = priorCDR_percent
-        self.priorTransition_percent = priorTransition_percent
+        self.prior_percent = prior_percent
+        self.prior_transition_percent = prior_transition_percent
         self.enrichment = enrichment
         self.output_label = output_label
         self.merge_distance = merge_distance
@@ -97,8 +97,8 @@ class hmmCDRprior:
         '''
         window_means['mean_value'].replace('.', np.nan, inplace=True)
         mean_values = window_means['mean_value'].dropna().astype(float)
-        priorCDR_score = np.percentile(mean_values, q=self.priorCDR_percent)
-        priorTransition_score = np.percentile(mean_values, q=self.priorTransition_percent)
+        priorCDR_score = np.percentile(mean_values, q=self.prior_percent)
+        priorTransition_score = np.percentile(mean_values, q=self.prior_transition_percent)
         return priorCDR_score, priorTransition_score
 
     def create_priorCDR_dataframe(self, merge_distance, windows_mean_df, priorCDR_score):
@@ -181,19 +181,19 @@ class hmmCDRprior:
         priorTranstions = self.create_priorTransition_dataframe(windows_mean, transition_score, priorCDRs)
         hmmCDRpriors = self.combine_beds(priorCDRs, priorTranstions)
         if hmmCDRpriors.empty:
-            print(f'No Priors Detected for {chrom} with settings: CDR Percentile - {self.priorCDR_percent}, Transition Percentile - {self.priorTransition_percent}')
+            print(f'No Priors Detected for {chrom} with settings: CDR Percentile - {self.prior_percent}, Transition Percentile - {self.prior_transition_percent}')
             
             if self.retries < 25:
-                if 0 < self.priorCDR_percent < 100:
-                    self.priorCDR_percent += 1
-                if 0 < self.priorTransition_percent < 100:
-                    self.priorTransition_percent += 1
+                if 0 < self.prior_percent < 100:
+                    self.prior_percent += 1
+                if 0 < self.prior_transition_percent < 100:
+                    self.prior_transition_percent += 1
                 self.retries += 1
-                print(f'Retrying with CDR Percentile = {self.priorCDR_percent}, Transition Percentile = {self.priorTransition_percent}')
+                print(f'Retrying with CDR Percentile = {self.prior_percent}, Transition Percentile = {self.prior_transition_percent}')
                 print(f'This is the {self.retries}/25 retry attempt.')
                 return self.priors_single_chromosome(chrom, bed4Methyl_chrom)
             else:
-                raise RuntimeError(f"Failed to detect priors for {chrom} after {self.retries} retries with final settings: CDR Percentile - {self.priorCDR_percent}, Transition Percentile - {self.priorTransition_percent}")
+                raise RuntimeError(f"Failed to detect priors for {chrom} after {self.retries} retries with final settings: CDR Percentile - {self.prior_percent}, Transition Percentile - {self.prior_transition_percent}")
 
         return chrom, hmmCDRpriors
 
@@ -255,10 +255,10 @@ def main():
     
     # hmmCDRprior Arguments
     argparser.add_argument('-w', '--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
-    argparser.add_argument('--priorCDR_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
-    argparser.add_argument('--priorTransition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
+    argparser.add_argument('--prior_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
+    argparser.add_argument('--prior_transition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
     argparser.add_argument('--prior_merge_distance', type=int, default=1021, help='Percentile for finding priorTransition regions. (default: 1021)')
-    argparser.add_argument('--minCDR_size', type=int, default=3000, help='Minimum size for CDR regions. (default: 3000)')
+    argparser.add_argument('--minCDR_size', type=int, default=3061, help='Minimum size for CDR regions. (default: 3000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
     argparser.add_argument('--save_intermediates', action='store_true', default=False, help="Set to true if you would like to save intermediates(filtered beds+window means). (default: False)")
     argparser.add_argument('--output_label', type=str, default='CDR', help='Label to use for name column of priorCDR BED file. (default: "CDR")')
@@ -281,8 +281,8 @@ def main():
     priors = hmmCDRprior(
         window_size=args.window_size,
         minCDR_size=args.minCDR_size,
-        priorCDR_percent=args.priorCDR_percent,
-        priorTransition_percent=args.priorTransition_percent,
+        prior_percent=args.prior_percent,
+        prior_transition_percent=args.prior_transition_percent,
         merge_distance=args.prior_merge_distance, 
         enrichment=args.enrichment,
         output_label=args.output_label
