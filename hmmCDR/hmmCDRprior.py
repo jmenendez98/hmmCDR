@@ -15,7 +15,7 @@ class hmmCDRprior:
     percentiles, and minimum region size. The results are combined into
     a BED file format.
     '''
-    def __init__(self, merge_distance=1021, window_size=1020, minCDR_size=3000,
+    def __init__(self, merge_distance=1021, window_size=1020, min_size=3000,
                  prior_percent=5, prior_transition_percent=10, 
                  enrichment=False, output_label='CDR'):
         '''
@@ -26,7 +26,7 @@ class hmmCDRprior:
         - bedgraphMethyl (pd.DataFrame): DataFrame containing the bedMethyl data.
         - output_path (str): Path where the output BED file will be saved.
         - window_size (int): Size of the windows used to calculate prior regions. Default is 1020.
-        - minCDR_size (int): Minimum size for CDR regions. Default is 3000.
+        - min_size (int): Minimum size for regions. Default is 3000.
         - prior_percent (int): Percentile for identifying prior CDR regions. Default is 5.
         - prior_transition_percent (int): Percentile for identifying prior transition regions. Default is 10.
         - output_label (str): Label used in the output BED file for CDR regions. Default is 'CDR'.
@@ -36,7 +36,7 @@ class hmmCDRprior:
 
         # all hmmCDR_prior parameters can be optionally changed
         self.window_size = window_size
-        self.minCDR_size = minCDR_size
+        self.min_size = min_size
         self.prior_percent = prior_percent
         self.prior_transition_percent = prior_transition_percent
         self.enrichment = enrichment
@@ -122,7 +122,7 @@ class hmmCDRprior:
         merged_windows = windows_bedtool.merge(d=merge_distance)
         merged_df = merged_windows.to_dataframe(names=[0, 1, 2])
         merged_df['size'] = merged_df[2] - merged_df[1]
-        filtered_merged_df = merged_df[merged_df['size'] >= self.minCDR_size]
+        filtered_merged_df = merged_df[merged_df['size'] >= self.min_size]
         filtered_merged_df = filtered_merged_df.drop(columns=['size'])
         return filtered_merged_df
 
@@ -258,7 +258,7 @@ def main():
     argparser.add_argument('--prior_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
     argparser.add_argument('--prior_transition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
     argparser.add_argument('--prior_merge_distance', type=int, default=1021, help='Percentile for finding priorTransition regions. (default: 1021)')
-    argparser.add_argument('--minCDR_size', type=int, default=3061, help='Minimum size for CDR regions. (default: 3000)')
+    argparser.add_argument('--min_size', type=int, default=3061, help='Minimum size for CDR regions. (default: 3000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
     argparser.add_argument('--save_intermediates', action='store_true', default=False, help="Set to true if you would like to save intermediates(filtered beds+window means). (default: False)")
     argparser.add_argument('--output_label', type=str, default='CDR', help='Label to use for name column of priorCDR BED file. (default: "CDR")')
@@ -280,7 +280,7 @@ def main():
 
     priors = hmmCDRprior(
         window_size=args.window_size,
-        minCDR_size=args.minCDR_size,
+        min_size=args.min_size,
         prior_percent=args.prior_percent,
         prior_transition_percent=args.prior_transition_percent,
         merge_distance=args.prior_merge_distance, 
