@@ -16,7 +16,7 @@ class hmmCDR:
     CLASS DOCSTRING
     '''
     def __init__(self, output_label, n_iter, min_size, merge_distance, 
-                 main_color, transition_color, no_transitions=False,
+                 main_color, transition_color, include_transitions=False,
                  emission_matrix=None, transition_matrix=None,
                  raw_thresholds=False,
                  w=0, x=25, y=50, z=75):
@@ -30,7 +30,7 @@ class hmmCDR:
         self.merge_distance = merge_distance
         self.raw_thresholds = raw_thresholds
 
-        self.no_transitions = no_transitions
+        self.include_transitions = include_transitions
         self.main_color = main_color
         self.transition_color = transition_color 
 
@@ -231,7 +231,7 @@ class hmmCDR:
         merged_transition_df = merge_and_label_regions(df, 1, f'{self.output_label}_transition', self.merge_distance)
         merged_transition_df['color'] = f'{self.transition_color}'
 
-        if self.no_transitions:
+        if self.include_transitions:
             adjusted_df = merged_cdr_df
         else:
             # Combine the two DataFrames
@@ -420,7 +420,7 @@ def main():
         merge_distance=args.merge_distance, 
         emission_matrix=emission_matrix,
         transition_matrix=transition_matrix,
-        no_transitions=args.no_transtions,
+        include_transitions=args.no_transitions,
         main_color=args.main_color,
         transition_color=args.transition_color,
         raw_thresholds=args.raw_thresholds,
