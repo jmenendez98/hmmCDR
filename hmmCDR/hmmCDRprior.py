@@ -10,7 +10,6 @@ from hmmCDR.hmmCDRparse import hmmCDRparse
 class hmmCDRprior:
     def __init__(self, merge_distance, window_size, min_size, 
                  prior_percent, prior_transition_percent, enrichment, output_label):
-
         self.merge_distance = merge_distance
         self.window_size = window_size
         self.min_size = min_size
@@ -135,7 +134,7 @@ def main():
     argparser.add_argument('--window_size', type=int, default=1020, help='Window size to calculate prior regions. (default: 1020)')
     argparser.add_argument('--prior_percent', type=int, default=5, help='Percentile for finding priorCDR regions. (default: 5)')
     argparser.add_argument('--prior_transition_percent', type=int, default=10, help='Percentile for finding priorTransition regions. (default: 10)')
-    argparser.add_argument('--prior_merge_distance', type=int, default=1021, help='Percentile for finding priorTransition regions. (default: 1021)')
+    argparser.add_argument('--merge_distance', type=int, default=1021, help='Percentile for finding priorTransition regions. (default: 1021)')
     argparser.add_argument('--min_size', type=int, default=3000, help='Minimum size for CDR regions. (default: 3000)')
     argparser.add_argument('--enrichment', action='store_true', help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
     argparser.add_argument('--output_label', type=str, default='CDR', help='Label to use for name column of priorCDR BED file. (default: "CDR")')
@@ -161,7 +160,7 @@ def main():
         min_size=args.min_size,
         prior_percent=args.prior_percent,
         prior_transition_percent=args.prior_transition_percent,
-        merge_distance=args.prior_merge_distance, 
+        merge_distance=args.merge_distance, 
         enrichment=args.enrichment,
         output_label=args.output_label
     )
