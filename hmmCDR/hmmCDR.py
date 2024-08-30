@@ -117,8 +117,6 @@ class hmmCDR:
         return emission_matrix
 
     def runHMM(self, emission_labelled_bed4Methyl, transition_matrix, emission_matrix):
-        print('transition_matrix:\n', transition_matrix)
-        print('emission_matrix:\n', emission_matrix)
         model = hmm.CategoricalHMM(n_components=3, n_iter=self.n_iter, init_params="")
         model.startprob_ = np.array([1.0, 0.0, 0.0])
         model.transmat_ = transition_matrix
