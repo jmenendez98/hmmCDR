@@ -1,7 +1,7 @@
 import pandas as pd
 import pybedtools
 import os
-
+import shutil
 
 class hmmCDRparse:
     def __init__(self, min_valid_cov, mod_code, sat_type, bedgraph=False):
@@ -9,6 +9,12 @@ class hmmCDRparse:
         self.sat_type = sat_type
         self.bedgraph = bedgraph
         self.min_valid_cov = min_valid_cov
+
+        self.check_bedtools_installed()
+
+    def check_bedtools_installed(self):
+        if shutil.which("bedtools") is None:
+            raise EnvironmentError("bedtools is required but not installed. Please install it before using this package.")
 
     def read_bedMethyl(self, path):
         if not os.path.exists(path) or os.stat(path).st_size == 0:
