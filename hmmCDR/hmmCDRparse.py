@@ -51,9 +51,6 @@ class hmmCDRparse:
         return cenSat
 
     def intersect_files(self, bed4Methyl, cenSat):
-        print('bedmethyl:\n', bed4Methyl)
-        print('censat:\n', cenSat)
-
         bedMethyl_bedtool = pybedtools.BedTool.from_dataframe(bed4Methyl)
         cenSat_bedtool = pybedtools.BedTool.from_dataframe(cenSat)
         intersected_bed4Methyl = bedMethyl_bedtool.intersect(cenSat_bedtool, wa=True, u=True).to_dataframe()
@@ -74,7 +71,5 @@ class hmmCDRparse:
         bed4Methyl = self.read_bedMethyl(bedMethyl_path)
         cenSat = self.read_cenSat(cenSat_path)
         intersected_bed4Methyl = self.intersect_files(bed4Methyl, cenSat)
-
-        print('Post Intersection:\n', intersected_bed4Methyl)
 
         return self.sep_by_chrom(intersected_bed4Methyl, cenSat)
