@@ -2,17 +2,28 @@
 
 # `hmmCDR`
 
+[![Conda](https://img.shields.io/conda/vn/jmmenend/hmmcdr?label=conda&color=green)](https://anaconda.org/jmmenend/hmmcdr)
+[![DockerHub](https://img.shields.io/docker/v/jmmenend/hmmcdr?label=DockerHub&color=blue)](https://hub.docker.com/r/jmmenend/hmmcdr)
+[![pypi](https://img.shields.io/pypi/v/hmmCDR)](https://pypi.org/project/hmmCDR/0.1.4/)
+
+
 `hmmCDR` is a set of python scripts to predict CDR regions of active alpha satellite arrays. Using modkit bedMethyl and CenSat Annotations.
 
 ## Installation: 
 
-Currently I recommend using `conda` to create an environment with `pybedtools` and then running `pip install hmmCDR`.
-
-Example Install:
+`hmmCDR` can be installed through `conda`. With `bioconda` and `conda-forge` channels enabled.
 ```bash
-conda create -n hmmCDR -c bioconda pybedtools &&
-  conda activate hmmCDR &&
-  pip install hmmCDR
+conda install jmmenend::hmmcdr -c bioconda -c conda-forge
+```
+
+`hmmCDR` can be run with `docker`.
+```bash
+docker run -v .:/data jmmenend/hmmcdr:0.1.4 # YOUR FLAGS #
+```
+
+`hmmCDR` can be install through `pypi`. Although this requires a separate installation of `bedtools`.
+```bash
+pip install bedtools
 ```
 
 NOTE: If you chose it install with only `pip` you need to install `bedtools` as well.
