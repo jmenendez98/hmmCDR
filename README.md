@@ -6,8 +6,7 @@
 [![DockerHub](https://img.shields.io/docker/v/jmmenend/hmmcdr?label=DockerHub&color=blue)](https://hub.docker.com/r/jmmenend/hmmcdr)
 [![pypi](https://img.shields.io/pypi/v/hmmCDR)](https://pypi.org/project/hmmCDR/0.1.4/)
 
-
-`hmmCDR` is a set of python scripts to predict CDR regions of active alpha satellite arrays. Using modkit bedMethyl and CenSat Annotations.
+`hmmCDR` is a set of python scripts to predict CDR regions of active alpha satellite arrays. It takes a bedMethyl from `modkit` and a set CenSat Annotations in order to make predictions.
 
 ## Installation: 
 
@@ -23,7 +22,7 @@ docker run -v .:/data jmmenend/hmmcdr:0.1.4 # YOUR FLAGS #
 
 `hmmCDR` can be install through `pypi`. Although this requires a separate installation of `bedtools`.
 ```bash
-pip install bedtools
+pip install hmmCDR
 ```
 
 NOTE: If you chose it install with only `pip` you need to install `bedtools` as well.
@@ -31,8 +30,6 @@ NOTE: If you chose it install with only `pip` you need to install `bedtools` as 
 ## Description:
 
 <img src="imgs/CDR_HMM_diagram.png" alt="HMM Diagram" width="600">
-
-
 
 This software is designed to find Centromere Dip Regions (CDRs), subCDRs, and their boundaries within the centromeric active alpha satellite (alpha-sat) array. CDRs are a uniquely hypo-methylated region within the typically hyper-methylated alpha-sat array. CDRs are tightly associated with the histone mark Centromere Protein A (CENP-A). This makes establishing accurate boundaries to CDRs and subCDRs essential to studying their relationship with CENPA. This method combines previous methods of identifying CDRs, through a sliding-window approach, with a Hidden Markov Model(HMM) that uses these sliding window estimates as a prior. The advantage to this two-fold approach is seen at the edges of the CDRs. A sliding window algorithm has a hard time drawing precise boundaries and identifying transitions in/out of the CDRs, whereas the HMM greatly improves identification of these regions. 
 
