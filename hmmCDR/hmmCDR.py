@@ -7,13 +7,13 @@ import concurrent.futures
 
 from hmmlearn import hmm
 
-from hmmCDR.hmmCDRparse import hmmCDRparse
-from hmmCDR.hmmCDRprior import hmmCDRprior
+from hmmCDR.parser import hmmCDR_parser
+from hmmCDR.find_priors import hmmCDR_prior_finder
 
 
 class hmmCDR:
     def __init__(self, output_label, n_iter, min_size, merge_distance, 
-                 main_color, transition_color, include_transitions, raw_thresholds,
+                 main_color, transition_color, remove_transitions, raw_thresholds,
                  emission_matrix=None, transition_matrix=None, w=0, x=25, y=50, z=75):
 
         self.output_label = output_label
@@ -22,7 +22,7 @@ class hmmCDR:
         self.merge_distance = merge_distance
         self.raw_thresholds = raw_thresholds
 
-        self.include_transitions = include_transitions
+        self.remove_transitions = remove_transitions
         self.main_color = main_color
         self.transition_color = transition_color 
 
@@ -34,18 +34,12 @@ class hmmCDR:
     
     def assign_priors(self, bed4Methyl, priors):
         bed4Methyl['prior'] = 'A'
+
         bedMethyl_bedtool = pybedtools.BedTool.from_dataframe(bed4Methyl)
+        prior_bedtool = pybedtools.BedTool.from_dataframe(priors)
 
-        def update_prior(prior_df, label):
-            if not prior_df.empty:
-                prior_bedtool = pybedtools.BedTool.from_dataframe(prior_df.drop(columns=[3]))
-                intersected_df = bedMethyl_bedtool.intersect(prior_bedtool, wa=True, wb=True).to_dataframe()
-                bed4Methyl.loc[bed4Methyl['start'].isin(intersected_df['start']), 'prior'] = label
-                return False
-            return True
-
-        self.no_transitions = update_prior(priors[priors[3] == f'{self.output_label}_transition'], 'B')
-        update_prior(priors[priors[3] == f'{self.output_label}'], 'C')
+        intersected_df = bedMethyl_bedtool.intersect(prior_bedtool, wa=True, wb=True).to_dataframe()
+        bed4Methyl.loc[bed4Methyl['start'].isin(intersected_df['start']), 'prior'] = 'C'
 
         return bed4Methyl
 
@@ -61,9 +55,8 @@ class hmmCDR:
         
         transition_matrix = [[transitions[f'{a}->{b}'] / totals[a] if totals[a] else 0 for b in 'ABC'] for a in 'ABC']
 
-        if self.no_transitions:
-            transition_matrix[0][1:] = [val / 2 for val in transition_matrix[0][1:]]
-            transition_matrix[2][:2] = [val / 2 for val in transition_matrix[2][:2]]
+        transition_matrix[0][1:] = [val / 2 for val in transition_matrix[0][1:]]
+        transition_matrix[2][:2] = [val / 2 for val in transition_matrix[2][:2]]
 
         return transition_matrix
     
@@ -92,27 +85,25 @@ class hmmCDR:
         emission_matrix = np.zeros((3, 4))
         emission_counts = labeled_bedMethyl.groupby(['prior', 'emission']).size().unstack(fill_value=0)
 
-        for prior, i in state_mapping.items():  # Loop over the mapped states (A -> 0, B -> 1, C -> 2)
+        for prior, i in state_mapping.items():
             if prior not in emission_counts.index:
-                # Create a new Series with zeros and the same columns as emission_counts
                 new_row = pd.Series([0] * len(emission_counts.columns), index=emission_counts.columns, name=prior)
-                # Append this Series to the DataFrame
-                emission_counts = emission_counts.append(new_row)
-        
-        for j in range(4):  # Loop over the emissions (0, 1, 2, 3)
-            if j not in emission_counts.columns:
-                emission_counts[j] = 0
-        
-        # Populate the emission matrix
-        for prior, i in state_mapping.items():  # Loop over the mapped states (A -> 0, B -> 1, C -> 2)
+                # Instead of using append, use pd.concat
+                emission_counts = pd.concat([emission_counts, new_row.to_frame().T])
+
+        for emission in range(4):
+            if emission not in emission_counts.columns:
+                emission_counts[emission] = 0
+
+        for prior, i in state_mapping.items():
             if prior in emission_counts.index:
                 total = emission_counts.loc[prior].sum()
 
-                for j in range(4):  # Loop over the emissions (0, 1, 2, 3)
+                for j in range(4):
                     if j in emission_counts.columns and total > 0:
                         emission_matrix[i, j] = emission_counts.loc[prior, j] / total
                     else:
-                        emission_matrix[i, j] = 0  # Ensure zero entry if no emissions or total is zero
+                        emission_matrix[i, j] = 0
 
         return emission_matrix
 
@@ -132,26 +123,27 @@ class hmmCDR:
         '''
         DOCSTRING
         '''
-        def merge_and_label_regions(df, state_value, label):
+        def merge_and_label_regions(df, state_value, label, color):
             state_df = df[df['predicted_state'] == state_value][['chrom', 'start', 'end']]
-            state_bedtool = pybedtools.BedTool.from_dataframe(state_df)
-            merged_df = state_bedtool.merge(d=self.merge_distance).to_dataframe(names=['chrom', 'start', 'end'])
-            merged_df['name'] = label
-            merged_df = merged_df[(merged_df['end'] - merged_df['start']) >= self.min_size]
-            merged_df['score'] = 0
-            merged_df['strand'] = '.'
-            merged_df['thickStart'] = merged_df['start']
-            merged_df['thickEnd'] = merged_df['end']
-            return merged_df
+            if not state_df.empty:
+                state_bedtool = pybedtools.BedTool.from_dataframe(state_df)
+                merged_df = state_bedtool.merge(d=self.merge_distance).to_dataframe(names=['chrom', 'start', 'end'])
+                merged_df['name'] = label
+                merged_df = merged_df[(merged_df['end'] - merged_df['start']) >= self.min_size]
+                merged_df['score'] = 0
+                merged_df['strand'] = '.'
+                merged_df['thickStart'] = merged_df['start']
+                merged_df['thickEnd'] = merged_df['end']
+                merged_df['color'] = color
+                return merged_df
+            else:
+                return pd.DataFrame()
         
         # Merge and label CDR and transition regions
-        merged_cdr_df = merge_and_label_regions(df, 2, f'{self.output_label}')
-        merged_cdr_df['color'] = f'{self.main_color}'
+        merged_cdr_df = merge_and_label_regions(df, 2, f'{self.output_label}', self.main_color)
+        merged_transition_df = merge_and_label_regions(df, 1, f'{self.output_label}_transition', self.transition_color)
 
-        merged_transition_df = merge_and_label_regions(df, 1, f'{self.output_label}_transition')
-        merged_transition_df['color'] = f'{self.transition_color}'
-
-        if self.include_transitions:
+        if not self.remove_transitions:
             return merged_cdr_df
 
         combined_df = pd.concat([merged_cdr_df, merged_transition_df]).sort_values(by=['chrom', 'start']).reset_index(drop=True)
@@ -216,13 +208,12 @@ def main():
 
     # hmmCDR Priors Flags
     argparser.add_argument('--window_size', type=int, default=510, help='Window size to calculate prior regions. (default: 510)')
-    argparser.add_argument('--prior_percent', type=float, default=10, help='Percentile for finding priorCDR regions. (default: 10)')
-    argparser.add_argument('--prior_transition_percent', type=float, default=20, help='Percentile for finding priorTransition regions. (default: 20)')
-    
+    argparser.add_argument('--prior_percentile', type=float, default=10, help='Percentile for finding priorCDR regions. (default: 10)')
+
     # HMM Flags
     argparser.add_argument('--raw_thresholds', action='store_true', default=False, help='Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: True)')
     argparser.add_argument('--n_iter', type=int, default=1, help='Maximum number of iteration allowed for the HMM. (default: 1)')
-    argparser.add_argument('--no_transitions', action='store_true', default=False, help='Do not report transitions in final hmmCDR output file. (default: False)')
+    argparser.add_argument('--remove_transitions', action='store_true', default=False, help='Do not report transitions in final hmmCDR output file. (default: False)')
     argparser.add_argument('-w', type=int, default=0, help='Threshold of non-zero methylation percentile to be classified as very low (default: 0)')
     argparser.add_argument('-x', type=int, default=25, help='Threshold of non-zero methylation percentile to be classified as low (default: 25)')
     argparser.add_argument('-y', type=int, default=50, help='Threshold of non-zero methylation percentile to be classified as medium (default: 50)')
@@ -242,7 +233,7 @@ def main():
     output_prefix = os.path.splitext(args.output_path)[0]
     sat_types = [st.strip() for st in args.sat_type.split(',')]
 
-    CDRparser = hmmCDRparse(
+    CDRparser = hmmCDR_parser(
         mod_code=args.mod_code,
         sat_type=sat_types,
         bedgraph=args.bedgraph,
@@ -254,11 +245,10 @@ def main():
         cenSat_path=args.cenSat_path
     )
     
-    CDRpriors = hmmCDRprior(
+    CDRpriors = hmmCDR_prior_finder(
         window_size=args.window_size, 
         min_size=args.min_size, 
-        prior_percent=args.prior_percent, 
-        prior_transition_percent=args.prior_transition_percent, 
+        prior_percentile=args.prior_percentile, 
         merge_distance=args.merge_distance, 
         enrichment=args.enrichment, 
         output_label=args.output_label
@@ -277,7 +267,7 @@ def main():
         n_iter=args.n_iter,
         min_size=args.min_size,
         merge_distance=args.merge_distance, 
-        include_transitions=args.no_transitions,
+        remove_transitions=args.remove_transitions,
         main_color=args.main_color,
         transition_color=args.transition_color,
         raw_thresholds=args.raw_thresholds,

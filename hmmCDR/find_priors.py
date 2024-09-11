@@ -5,9 +5,9 @@ import argparse
 import os
 import concurrent.futures
 
-from hmmCDR.hmmCDRparse import hmmCDRparse
+from hmmCDR.parser import hmmCDR_parser
 
-class hmmCDRprior:
+class hmmCDR_prior_finder:
     def __init__(self, merge_distance, window_size, min_size, prior_percentile,  enrichment, output_label):
         self.merge_distance = merge_distance
         self.window_size = window_size

@@ -3,7 +3,7 @@ import pybedtools
 import os
 import shutil
 
-class hmmCDRparse:
+class hmmCDR_parser:
     def __init__(self, min_valid_cov, mod_code, sat_type, bedgraph=False):
         self.mod_code = mod_code
         self.sat_type = sat_type
