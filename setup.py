@@ -25,6 +25,7 @@ setup(
         'console_scripts': [
             'hmmCDR=hmmCDR.hmmCDR:main',
             'find_priors=hmmCDR.find_priors:main',
+            'profile_plot=hmmCDR.profile_plot:main',
         ]
     },
     classifiers=[
