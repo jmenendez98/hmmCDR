@@ -131,7 +131,7 @@ def main():
 
     sat_types = [st.strip() for st in args.sat_type.split(',')]
 
-    CDRparser = hmmCDRparse(
+    CDRparser = hmmCDR_parser(
             mod_code=args.mod_code,
             sat_type=sat_types,
             bedgraph=args.bedgraph,
@@ -143,7 +143,7 @@ def main():
         cenSat_path=args.cenSat_path
     )
 
-    priors = hmmCDRprior(
+    priors = hmmCDR_prior_finder(
         window_size=args.window_size,
         min_size=args.min_size,
         prior_percentile=args.prior_percentile,
