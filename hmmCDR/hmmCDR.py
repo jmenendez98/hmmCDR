@@ -50,13 +50,21 @@ class hmmCDR:
         for state in labeled_bedMethyl_df['prior'][1:]:
             transitions[f'{prev_state}->{state}'] += 1
             prev_state = state
-        
         totals = {state: sum(transitions[f'{state}->{next_state}'] for next_state in 'ABC') for state in 'ABC'}
         
         transition_matrix = [[transitions[f'{a}->{b}'] / totals[a] if totals[a] else 0 for b in 'ABC'] for a in 'ABC']
 
-        transition_matrix[0][1:] = [val / 2 for val in transition_matrix[0][1:]]
-        transition_matrix[2][:2] = [val / 2 for val in transition_matrix[2][:2]]
+        initial_A_C = transition_matrix[0][2]  # A->C value before modification
+        transition_matrix[0][1] = initial_A_C / 3  # A->B becomes 1/3 of A->C
+        transition_matrix[0][2] = 2 * initial_A_C / 3  # A->C becomes 2/3 of its original value
+
+        initial_C_A = transition_matrix[2][0]  # C->A value before modification
+        transition_matrix[2][0] = initial_C_A / 3  # C->A becomes 1/3 of its original value
+        transition_matrix[2][1] = 2 * initial_C_A / 3  # C->B becomes 2/3 of the initial C->A
+
+        transition_matrix[1][0] = initial_C_A / 3  # B->A becomes 1/3 of initial C->A
+        transition_matrix[1][2] = 2 * initial_C_A / 3  # B->C becomes 2/3 of initial C->A
+        transition_matrix[1][1] = transition_matrix[2][2]  # B->B becomes the same as C->C
 
         return transition_matrix
     
@@ -95,8 +103,9 @@ class hmmCDR:
             if emission not in emission_counts.columns:
                 emission_counts[emission] = 0
 
+        # Fill emission matrix for A and C
         for prior, i in state_mapping.items():
-            if prior in emission_counts.index:
+            if prior in emission_counts.index and prior != 'B':  # Handle A and C first
                 total = emission_counts.loc[prior].sum()
 
                 for j in range(4):
@@ -105,7 +114,16 @@ class hmmCDR:
                     else:
                         emission_matrix[i, j] = 0
 
+        # Compute B row as the average of the A and C rows
+        emission_matrix[1, :] = (emission_matrix[0, :] + emission_matrix[2, :]) / 2
+        
+        # Normalize the B row so that it sums to 1
+        b_row_sum = emission_matrix[1, :].sum()
+        if b_row_sum > 0:
+            emission_matrix[1, :] = emission_matrix[1, :] / b_row_sum
+
         return emission_matrix
+
 
     def runHMM(self, emission_labelled_bed4Methyl, transition_matrix, emission_matrix):
         model = hmm.CategoricalHMM(n_components=3, n_iter=self.n_iter, init_params="")
@@ -244,6 +262,12 @@ def main():
         bedMethyl_path=args.bedMethyl_path, 
         cenSat_path=args.cenSat_path
     )
+
+    if args.save_intermediates:
+        concatenated_bed4Methyl = pd.concat(bed4Methyl_chrom_dict.values(), axis=0)
+        bed4Methyl_output_path = f'{output_prefix}_bed4.bedgraph'
+        concatenated_bed4Methyl.to_csv(bed4Methyl_output_path, sep='\t', index=False, header=False)
+        print(f'Wrote methylation bedgraph to: {bed4Methyl_output_path}')
     
     CDRpriors = hmmCDR_prior_finder(
         window_size=args.window_size, 
@@ -260,7 +284,7 @@ def main():
         concatenated_priors = pd.concat(hmmCDRpriors_chrom_dict.values(), axis=0)
         intermediate_output_path = f'{output_prefix}_priors.bed'
         concatenated_priors.to_csv(intermediate_output_path, sep='\t', index=False, header=False)
-        print(f'Wrote Intermediate: {intermediate_output_path}')
+        print(f'Wrote priors to: {intermediate_output_path}')
 
     CDRhmm = hmmCDR(
         output_label=args.output_label,
@@ -279,10 +303,10 @@ def main():
         priors_chrom_dict=hmmCDRpriors_chrom_dict
     )
 
-    # Combine all chromosomes and save the output
     concatenated_hmmCDRs = pd.concat(hmmCDRresults_chrom_dict.values(), axis=0)
     concatenated_hmmCDRs.to_csv(args.output_path, sep='\t', index=False, header=False)
-    print(f"hmmCDRs saved to: {args.output_path}")
+    if args.save_intermediates: 
+        print(f"Final output saved to: {args.output_path}")
 
 
 if __name__ == "__main__":
