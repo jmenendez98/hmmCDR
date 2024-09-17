@@ -303,7 +303,11 @@ def main():
         priors_chrom_dict=hmmCDRpriors_chrom_dict
     )
 
-    concatenated_hmmCDRs = pd.concat(hmmCDRresults_chrom_dict.values(), axis=0)
+    concatenated_hmm_subCDRs = pd.concat(hmmCDRresults_chrom_dict.values(), axis=0)
+    concatenated_hmm_subCDRs.to_csv(f'{output_prefix}_subCDRs.bed', sep='\t', index=False, header=False)
+
+    concatenated_hmmCDRs_bedtool = pybedtools.BedTool.from_dataframe(concatenated_hmm_subCDRs)
+    concatenated_hmmCDRs = concatenated_hmmCDRs_bedtool.merge(d=450000)
     concatenated_hmmCDRs.to_csv(args.output_path, sep='\t', index=False, header=False)
     if args.save_intermediates: 
         print(f"Final output saved to: {args.output_path}")
