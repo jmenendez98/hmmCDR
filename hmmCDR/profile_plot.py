@@ -69,30 +69,33 @@ def intersect_with_range(df, range_bedtool):
     return intersected_df
 
 def smooth_bedgraph(bedgraph_df, window_size=10000):
-    bedgraph_df['name'] = pd.to_numeric(bedgraph_df['name'], errors='coerce')
-
+    bedgraph_df.loc[:, 'name'] = pd.to_numeric(bedgraph_df['name'], errors='coerce')
+    bedgraph_bt = pybedtools.BedTool.from_dataframe(bedgraph_df[['chrom', 'start', 'end', 'name']])
+    
     smoothed_dfs = []
     for chrom, group in bedgraph_df.groupby('chrom'):
         range_start = group['start'].min()
         range_end = group['end'].max()
 
-        bins = range(range_start, range_end + window_size, window_size)
-        labels = [(bins[i] + bins[i+1]) // 2 for i in range(len(bins)-1)]
-
-        group['window_center'] = pd.cut(group['start'], bins=bins, labels=labels, include_lowest=True)
-
-        smoothed_data = group.groupby('window_center')['name'].mean().reset_index()
-        smoothed_data['chrom'] = chrom
-
-        smoothed_data['start'] = smoothed_data['window_center'].astype(int)
-        smoothed_data['end'] = smoothed_data['start'] + window_size
+        windows_list = []
+        for start in range(range_start, range_end, window_size):
+            end = min(start + window_size, range_end)
+            windows_list.append([chrom, start, end])
+        windows_bt = pybedtools.BedTool(windows_list)
         
-        smoothed_dfs.append(smoothed_data[['chrom', 'start', 'end', 'name']])
-    return pd.concat(smoothed_dfs)
+        mapped = windows_bt.map(bedgraph_bt, c=4, o='mean')
+        mapped_df = mapped.to_dataframe(names=['chrom', 'start', 'end', 'name'])
+        mapped_df['name'] = mapped_df['name'].replace('.', np.nan).fillna(0)
+        smoothed_dfs.append(mapped_df)
+    
+    if smoothed_dfs:
+        return pd.concat(smoothed_dfs).reset_index(drop=True)
+    else:
+        return pd.DataFrame(columns=['chrom', 'start', 'end', 'name'])
 
 def cenprofileplot(hap_dict, num_features, cenSat_name, 
                    x_min, x_max, hap1_name, hap2_name,
-                   output_path, track_labels):
+                   output_path, no_track_labels, bedgraphs):
     haplotypes = [hap1_name, hap2_name] if hap2_name else [hap1_name]
     num_haplotypes = len(haplotypes)
     num_chroms = max([len(hap_dict[haplotype][cenSat_name]['chrom'].unique()) for haplotype in haplotypes])
@@ -126,15 +129,17 @@ def cenprofileplot(hap_dict, num_features, cenSat_name,
                 ends = data['normalized_end'].values
                 widths = ends - starts 
 
-                if 'itemRgb' in data.columns:
-                    colors = data['itemRgb'].apply(lambda x: tuple([int(c) / 255 for c in x.split(',')]) )
+                if key not in bedgraphs:
+                    if 'itemRgb' in data.columns:
+                        colors = data['itemRgb'].apply(lambda x: tuple([int(c) / 255 for c in x.split(',')]) )
+                    else:
+                        colors = 'grey'
                     if key == cenSat_name:
                         bar_heights = 0.9
                         offset = 0
                     else: 
                         bar_heights = 0.35
                         offset = (index*0.4)+0.4 
-
                     ax.barh(
                         y_pos * num_features + offset,  
                         widths,
@@ -142,17 +147,14 @@ def cenprofileplot(hap_dict, num_features, cenSat_name,
                         height=bar_heights,
                         color=colors
                     )
-
                 else:
                     height_factors = (data['name'].astype(float).values / 100)
-
                     if key == cenSat_name:
                         bar_heights = height_factors * 0.9
                         offset = 0
                     else: 
                         bar_heights = height_factors * 0.35
                         offset = (index*0.4)+0.4 
-
                     ax.barh(
                         y_pos * num_features + offset, 
                         widths,
@@ -162,16 +164,17 @@ def cenprofileplot(hap_dict, num_features, cenSat_name,
                         align='edge'
                     )
 
-                ax.text(
-                    x_min + 0.001 * (x_max - x_min), 
-                    y_pos * num_features + offset,
-                    key, 
-                    va='center',
-                    ha='left',   
-                    fontsize=10, 
-                    fontweight=1000,
-                    color='black'
-                )
+                if not no_track_labels:
+                    ax.text(
+                        x_min + 0.001 * (x_max - x_min), 
+                        y_pos * num_features + offset,
+                        key, 
+                        va='center',
+                        ha='left',   
+                        fontsize=10, 
+                        fontweight=1000,
+                        color='black'
+                    )
 
     for ax, haplotype in zip(axes, haplotypes):
         hap_cenSat = hap_dict[haplotype][cenSat_name]
@@ -188,20 +191,21 @@ def cenprofileplot(hap_dict, num_features, cenSat_name,
         ax.xaxis.set_ticks([])
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=2400)
+    plt.savefig(output_path, dpi=600)
 
 def main():
 
     def parse_arguments():
         parser = argparse.ArgumentParser(description="Process genomic data.")
 
-        parser.add_argument('--cenSat_path', type=str, default='/public/groups/migalab/jmmenend/hmmCDR_data/hg002v1.0.1.cenSatv2.0.bed',
+        parser.add_argument('cenSat_path', type=str,
                             help='Path to the cenSat file.')
-        parser.add_argument('--bed_paths', type=str, default='/public/groups/migalab/jmmenend/hmmCDR_data/HG002_ONT_hmmCDR.bed,/public/groups/migalab/jmmenend/hmmCDR_data/chrX_HG002_CENPAenrichment.bed',
-                            help='Comma-separated list of paths to the bed files.')
-        parser.add_argument('--bedgraph_paths', type=str, default='/public/groups/migalab/jmmenend/hmmCDR_data/HG002_ONT.5mCpileup.bedgraph',
+        parser.add_argument('output_path', type=str, 
                             help='Path to the bedgraph file.')
-        parser.add_argument('--output_path', type=str, default='profile_plot.png',
+        
+        parser.add_argument('--bed_paths', type=str, default='',
+                            help='Comma-separated list of paths to the bed files.')
+        parser.add_argument('--bedgraph_paths', type=str, default='',
                             help='Path to the bedgraph file.')
         parser.add_argument('--hap1_name', type=str, default='MATERNAL',
                             help='Name of the first haplotype.')
@@ -209,7 +213,7 @@ def main():
                             help='Name of the second haplotype.')
         parser.add_argument('--diploid', action='store_true', default=True,
                             help='Set to True if the data is diploid.')
-        parser.add_argument('--track_labels', action='store_true', default=True,
+        parser.add_argument('--no_track_labels', action='store_true', default=False,
                     help='Set to True if the data is diploid.')
 
         return parser.parse_args()
@@ -217,13 +221,13 @@ def main():
     args = parse_arguments()
 
     cenSat_path = args.cenSat_path
-    bed_paths = args.bed_paths.split(',')  # Split the bed_paths into a list
+    bed_paths = args.bed_paths
     bedgraph_paths = args.bedgraph_paths
     output_path = args.output_path
     hap1_name = args.hap1_name
     hap2_name = args.hap2_name
     diploid = args.diploid
-    track_labels = args.track_labels
+    no_track_labels = args.no_track_labels
 
     cenSat_name = get_file_name(cenSat_path)
 
@@ -237,7 +241,6 @@ def main():
     range_bedtool = create_range_bed(centers, half_size=(half.max()*1.1) )
 
     files = {file: intersect_with_range(files[file], range_bedtool) for file in files}
-
 
     if diploid:
         hap_dict = { hap1_name: {}, hap2_name: {} }
@@ -267,7 +270,9 @@ def main():
     cenprofileplot(hap_dict=hap_dict, num_features=len(files.keys()), 
                cenSat_name=cenSat_name, hap1_name=hap1_name, hap2_name=hap2_name,
                x_min=x_min, x_max=x_max,
-               output_path=output_path, track_labels=track_labels)
+               output_path=output_path, no_track_labels=no_track_labels, 
+               bedgraphs=bedgraph_paths)
     
+
 if __name__ == "__main__":
     main()
