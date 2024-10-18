@@ -38,11 +38,11 @@ def find_center(cenSat, sat_names='H1L,mon'):
 def normalize_to_center(bed, centers):
     if 'start' not in bed.columns or 'end' not in bed.columns:
         raise KeyError("'start' or 'end' column not found in the bed DataFrame.")
-    bed['normalized_start'] = bed.apply(
+    bed.loc[:,'normalized_start'] = bed.apply(
         lambda row: row['start'] - centers.get(row['chrom'], 0), 
         axis=1
     )
-    bed['normalized_end'] = bed.apply(
+    bed.loc[:,'normalized_end'] = bed.apply(
         lambda row: row['end'] - centers.get(row['chrom'], 0),  
         axis=1
     )
@@ -211,7 +211,7 @@ def main():
                             help='Name of the first haplotype.')
         parser.add_argument('--hap2_name', type=str, default='PATERNAL',
                             help='Name of the second haplotype.')
-        parser.add_argument('--diploid', action='store_true', default=True,
+        parser.add_argument('--haploid', action='store_true', default=False,
                             help='Set to True if the data is diploid.')
         parser.add_argument('--no_track_labels', action='store_true', default=False,
                     help='Set to True if the data is diploid.')
@@ -226,7 +226,7 @@ def main():
     output_path = args.output_path
     hap1_name = args.hap1_name
     hap2_name = args.hap2_name
-    diploid = args.diploid
+    diploid = not args.haploid
     no_track_labels = args.no_track_labels
 
     cenSat_name = get_file_name(cenSat_path)
