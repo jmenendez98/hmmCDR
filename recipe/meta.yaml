@@ -1,6 +1,6 @@
 package:
   name: hmmcdr
-  version: "0.1.7"
+  version: "0.2.0"
 
 source:
   url: https://files.pythonhosted.org/packages/5a/d0/42a1d220590388ffa005247a356fed3f6a89b023b473d1157b75f5c23f18/hmmcdr-0.1.7.tar.gz
