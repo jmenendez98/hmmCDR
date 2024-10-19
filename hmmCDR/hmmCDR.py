@@ -57,13 +57,13 @@ class hmmCDR:
         totals = {state: transitions[f'{state}->0'] + transitions[f'{state}->1'] for state in ['0', '1']}
         
         # Create the transition matrix for states 0 and 1
-        transition_matrix = [
+        transition_matrix = np.array([
             [
                 transitions[f'{a}->{b}'] / totals[a] if totals[a] else 0
                 for b in ['0', '1']
             ] for a in ['0', '1']
-        ]
-        
+        ])
+
         return transition_matrix
     
     def calculate_emission_thresholds(self, bed4Methyl):
@@ -92,12 +92,10 @@ class hmmCDR:
         
         # Group the data by 'prior' (state) and 'emission', counting occurrences
         emission_counts = labeled_bedMethyl.groupby(['prior', 'emission']).size().unstack(fill_value=0)
-
         row_sums = emission_counts.sum(axis=1)
-
         emission_matrix = emission_counts.div(row_sums, axis=0)
 
-        return emission_matrix
+        return emission_matrix.to_numpy()
 
     def runHMM(self, emission_labelled_bed4Methyl, transition_matrix, emission_matrix):
         model = hmm.CategoricalHMM(n_components=2, n_iter=self.n_iter, init_params="")
@@ -192,6 +190,8 @@ class hmmCDR:
             'thickEnd': 'int64'
         })
 
+        single_chrom_hmmCDR_scores.loc[:,'CDR_score'] = single_chrom_hmmCDR_scores.loc[:,'CDR_score']*100
+
         return single_chrom_hmmCDR_output.sort_values(by='start'), single_chrom_hmmCDR_scores
     
     def hmm_single_chromosome(self, chrom, bed4Methyl_chrom, priors_chrom):
@@ -206,7 +206,7 @@ class hmmCDR:
         hmmlabelled_bed4Methyl = self.runHMM(labelled_bed4Methyl_chrom, transition_matrix, emission_matrix)
         single_chrom_hmmCDR_result, single_chrom_hmmCDR_scores = self.create_subCDR_df(hmmlabelled_bed4Methyl)
 
-        return chrom, single_chrom_hmmCDR_result, single_chrom_hmmCDR_scores
+        return chrom, single_chrom_hmmCDR_result, single_chrom_hmmCDR_scores, emission_matrix, transition_matrix
 
     def hmm_all_chromosomes(self, bed4Methyl_chrom_dict, priors_chrom_dict):
         with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -219,7 +219,10 @@ class hmmCDR:
             hmmCDRresults_chrom_dict = {chrom: result[1] for chrom, result in results.items()}
             hmmCDRscores_chrom_dict = {chrom: result[2] for chrom, result in results.items()}
 
-        return hmmCDRresults_chrom_dict, hmmCDRscores_chrom_dict
+            hmmCDR_emission_matrices = {chrom: result[3] for chrom, result in results.items()}
+            hmmCDR_transition_matrices = {chrom: result[4] for chrom, result in results.items()}
+
+        return hmmCDRresults_chrom_dict, hmmCDRscores_chrom_dict, hmmCDR_emission_matrices, hmmCDR_transition_matrices
 
 
 def main():
@@ -233,13 +236,12 @@ def main():
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
     argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
     argparser.add_argument('--bedgraph', action='store_true', help='Flag indicating if the input is a bedgraph. (default: False)')
-    argparser.add_argument('--min_valid_cov', type=int, default=1, help='Minimum Valid Coverage to consider a methylation site. (default: 1)')
+    argparser.add_argument('--min_valid_cov', type=int, default=15, help='Minimum Valid Coverage to consider a methylation site. (default: 15)')
 
     # hmmCDR Priors Flags
     argparser.add_argument('--window_size', type=int, default=1000, help='Window size to calculate prior regions. (default: 1000)')
-    argparser.add_argument('--prior_percentile', type=float, default=5, help='Percentile for finding  prior subCDR regions. (default: 5)')
-    argparser.add_argument('--prior_min_size', type=int, default=5000, help='Minimum size of prior subCDR regions. (default: 5000)')
-    argparser.add_argument('--prior_merge_distance', type=int, default=1001, help='Distance to merge adjacently labelled subCDR regions. (default: 1001)')
+    argparser.add_argument('--prior_percentile', type=float, default=10, help='Percentile for finding  prior subCDR regions. (default: 10)')
+    argparser.add_argument('--prior_min_size', type=int, default=3000, help='Minimum size of prior subCDR regions. (default: 3000)')
 
     # HMM Flags
     argparser.add_argument('--raw_thresholds', action='store_true', default=True, help='Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: True)')
@@ -286,9 +288,8 @@ def main():
     
     CDRpriors = hmmCDR_prior_finder(
         window_size=args.window_size, 
-        prior_percentile=args.prior_percentile, 
         min_size=args.prior_min_size, 
-        merge_distance=args.prior_merge_distance, 
+        prior_percentile=args.prior_percentile, 
         enrichment=args.enrichment, 
         output_label=args.output_label
     )
@@ -315,10 +316,30 @@ def main():
         output_label=args.output_label
     )
 
-    hmm_results_chrom_dict, hmm_scores_chrom_dict = CDRhmm.hmm_all_chromosomes(
+    hmm_results_chrom_dict, hmm_scores_chrom_dict, emission_matrices, transition_matrices = CDRhmm.hmm_all_chromosomes(
         bed4Methyl_chrom_dict=bed4Methyl_chrom_dict,
         priors_chrom_dict=priors_chrom_dict
     )
+
+    # output emission and transition matrices:
+    if args.output_all:
+        emission_matrix_output = f'{output_prefix}_emission_matrices.txt'
+        with open(emission_matrix_output, 'w') as f:
+            for chrom, matrix in emission_matrices.items():
+                f.write(f"Chromosome: {chrom}\n")
+                for row in matrix:
+                    row_str = '\t'.join(map(str, row))
+                    f.write(f"{row_str}\n")
+                f.write("\n")
+
+        transition_matrix_output = f'{output_prefix}_transition_matrices.txt'
+        with open(transition_matrix_output, 'w') as f:
+            for chrom, matrix in transition_matrices.items():
+                f.write(f"Chromosome: {chrom}\n")
+                for row in matrix:
+                    row_str = '\t'.join(map(str, row))
+                    f.write(f"{row_str}\n")
+                f.write("\n")
 
     # output subCDRs and CDR scoring bedgraph
     concatenated_hmm_subCDRs = pd.concat(hmm_results_chrom_dict.values(), axis=0)
