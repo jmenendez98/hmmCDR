@@ -38,14 +38,8 @@ def find_center(cenSat, sat_names='H1L,mon'):
 def normalize_to_center(bed, centers):
     if 'start' not in bed.columns or 'end' not in bed.columns:
         raise KeyError("'start' or 'end' column not found in the bed DataFrame.")
-    bed.loc[:,'normalized_start'] = bed.apply(
-        lambda row: row['start'] - centers.get(row['chrom'], 0), 
-        axis=1
-    )
-    bed.loc[:,'normalized_end'] = bed.apply(
-        lambda row: row['end'] - centers.get(row['chrom'], 0),  
-        axis=1
-    )
+    bed.loc[:,'normalized_start'] = bed['start'] - bed['chrom'].map(centers).fillna(0)
+    bed.loc[:,'normalized_end'] = bed['end'] - bed['chrom'].map(centers).fillna(0)
     return bed
 
 def sep_haplotype(data, hap1_str, hap2_str):
