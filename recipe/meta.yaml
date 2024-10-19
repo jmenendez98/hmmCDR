@@ -3,8 +3,8 @@ package:
   version: "0.2.0"
 
 source:
-  url: https://files.pythonhosted.org/packages/5a/d0/42a1d220590388ffa005247a356fed3f6a89b023b473d1157b75f5c23f18/hmmcdr-0.1.7.tar.gz
-  sha256: ca39238b9cf2ad0651868188ef59f0eee318344262af4d3e08b136529358f7e5
+  url: https://files.pythonhosted.org/packages/f2/cc/af8c10941c081719f91770fcd14c9767bdfda1a899684dac7b22e3cf0840/hmmcdr-0.2.0.tar.gz
+  sha256: 714588cd016d3be7d4457a801904d5054329c7bb514ace2814eae7668759bb08
 
 build:
   noarch: python
