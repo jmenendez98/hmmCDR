@@ -83,15 +83,9 @@ This python package takes in a bed file of 5mC methylation in aggregate, prefera
 
 ### Usage:
 ```
-usage: hmmCDR [-h] [-m MOD_CODE] [-s SAT_TYPE] [--bedgraph]
-              [--min_valid_cov MIN_VALID_COV] [--window_size WINDOW_SIZE]
-              [--prior_percent PRIOR_PERCENT]
-              [--prior_transition_percent PRIOR_TRANSITION_PERCENT]
-              [--raw_thresholds] [--n_iter N_ITER] [--no_transitions] [-w W]
-              [-x X] [-y Y] [-z Z] [--merge_distance MERGE_DISTANCE]
-              [--min_size MIN_SIZE] [--enrichment] [--main_color MAIN_COLOR]
-              [--transition_color TRANSITION_COLOR] [--save_intermediates]
-              [--output_label OUTPUT_LABEL]
+usage: hmmCDR [-h] [-m MOD_CODE] [-s SAT_TYPE] [--bedgraph] [--min_valid_cov MIN_VALID_COV] [--window_size WINDOW_SIZE] [--prior_percentile PRIOR_PERCENTILE]
+              [--raw_thresholds] [--n_iter N_ITER] [--remove_transitions] [-w W] [-x X] [-y Y] [-z Z] [--merge_distance MERGE_DISTANCE] [--min_size MIN_SIZE]
+              [--enrichment] [--main_color MAIN_COLOR] [--transition_color TRANSITION_COLOR] [--save_intermediates] [--output_label OUTPUT_LABEL]
               bedMethyl_path cenSat_path output_path
 
 Process input files with optional parameters.
@@ -101,110 +95,37 @@ positional arguments:
   cenSat_path           Path to the CenSat BED file
   output_path           Output Path for the output files
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -m MOD_CODE, --mod_code MOD_CODE
-                        Modification code to filter bedMethyl file (default:
-                        "m")
+                        Modification code to filter bedMethyl file (default: "m")
   -s SAT_TYPE, --sat_type SAT_TYPE
-                        Comma-separated list of satellite types/names to
-                        filter CenSat bed file. (default: "H1L")
-  --bedgraph            Flag indicating if the input is a bedgraph. (default:
-                        False)
+                        Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")
+  --bedgraph            Flag indicating if the input is a bedgraph. (default: False)
   --min_valid_cov MIN_VALID_COV
-                        Minimum Valid Coverage to consider a methylation site.
-                        (default: 10)
+                        Minimum Valid Coverage to consider a methylation site. (default: 10)
   --window_size WINDOW_SIZE
                         Window size to calculate prior regions. (default: 510)
-  --prior_percent PRIOR_PERCENT
+  --prior_percentile PRIOR_PERCENTILE
                         Percentile for finding priorCDR regions. (default: 10)
-  --prior_transition_percent PRIOR_TRANSITION_PERCENT
-                        Percentile for finding priorTransition regions.
-                        (default: 20)
-  --raw_thresholds      Use values for flags w,x,y,z as raw threshold cutoffs
-                        for each emission category. (default: True)
-  --n_iter N_ITER       Maximum number of iteration allowed for the HMM.
-                        (default: 1)
-  --no_transitions      Do not report transitions in final hmmCDR output file.
-                        (default: False)
-  -w W                  Threshold of non-zero methylation percentile to be
-                        classified as very low (default: 0)
-  -x X                  Threshold of non-zero methylation percentile to be
-                        classified as low (default: 25)
-  -y Y                  Threshold of non-zero methylation percentile to be
-                        classified as medium (default: 50)
-  -z Z                  Threshold of non-zero methylation percentile to be
-                        classified as high (default: 75)
+  --raw_thresholds      Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: True)
+  --n_iter N_ITER       Maximum number of iteration allowed for the HMM. (default: 1)
+  --remove_transitions  Do not report transitions in final hmmCDR output file. (default: False)
+  -w W                  Threshold of non-zero methylation percentile to be classified as very low (default: 0)
+  -x X                  Threshold of non-zero methylation percentile to be classified as low (default: 25)
+  -y Y                  Threshold of non-zero methylation percentile to be classified as medium (default: 50)
+  -z Z                  Threshold of non-zero methylation percentile to be classified as high (default: 75)
   --merge_distance MERGE_DISTANCE
-                        Distance to merge adjacently labelled regions.
-                        (default: 1021)
+                        Distance to merge adjacently labelled regions. (default: 1021)
   --min_size MIN_SIZE   Minimum size for regions. (default: 3000)
-  --enrichment          Enrichment flag. Pass in if you are looking for
-                        methylation enriched regions. (default: False)
+  --enrichment          Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)
   --main_color MAIN_COLOR
                         Color to dictate main regions. (default: 50,50,255)
   --transition_color TRANSITION_COLOR
-                        Color to dictate transition regions. (default:
-                        100,150,200)
-  --save_intermediates  Set to true if you would like to save
-                        intermediates(filtered beds+window means). (default:
-                        False)
+                        Color to dictate transition regions. (default: 100,150,200)
+  --save_intermediates  Set to true if you would like to save intermediates(filtered beds+window means). (default: False)
   --output_label OUTPUT_LABEL
-                        Label to use for name column of hmmCDR BED file. Needs
-                        to match priorCDR label. (default: "CDR")
-```
-
-```
-usage: hmmCDRprior [-h] [-m MOD_CODE] [-s SAT_TYPE] [--bedgraph]
-                   [--min_valid_cov MIN_VALID_COV] [--window_size WINDOW_SIZE]
-                   [--prior_percent PRIOR_PERCENT]
-                   [--prior_transition_percent PRIOR_TRANSITION_PERCENT]
-                   [--merge_distance MERGE_DISTANCE] [--min_size MIN_SIZE]
-                   [--enrichment] [--output_label OUTPUT_LABEL]
-                   [--save_intermediates]
-                   bedMethyl_path cenSat_path output_path
-
-Process bedMethyl and CenSat BED file to produce hmmCDR priors
-
-positional arguments:
-  bedMethyl_path        Path to the bedMethyl file
-  cenSat_path           Path to the CenSat BED file
-  output_path           Path to the output priorCDRs BED file
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -m MOD_CODE, --mod_code MOD_CODE
-                        Modification code to filter bedMethyl file (default:
-                        "m")
-  -s SAT_TYPE, --sat_type SAT_TYPE
-                        Comma-separated list of satellite types/names to
-                        filter CenSat bed file. (default: "H1L")
-  --bedgraph            Flag indicating if the input is a bedgraph. (default:
-                        False)
-  --min_valid_cov MIN_VALID_COV
-                        Minimum valid coverage to consider a methylation
-                        site(read from full modkit pileup files). (default:
-                        10)
-  --window_size WINDOW_SIZE
-                        Window size to calculate prior regions. (default:
-                        1020)
-  --prior_percent PRIOR_PERCENT
-                        Percentile for finding priorCDR regions. (default: 5)
-  --prior_transition_percent PRIOR_TRANSITION_PERCENT
-                        Percentile for finding priorTransition regions.
-                        (default: 10)
-  --merge_distance MERGE_DISTANCE
-                        Percentile for finding priorTransition regions.
-                        (default: 1021)
-  --min_size MIN_SIZE   Minimum size for CDR regions. (default: 3000)
-  --enrichment          Enrichment flag. Pass in if you are looking for
-                        methylation enriched regions. (default: False)
-  --output_label OUTPUT_LABEL
-                        Label to use for name column of priorCDR BED file.
-                        (default: "CDR")
-  --save_intermediates  Set to true if you would like to save
-                        intermediates(filtered beds+window means). (default:
-                        False)
+                        Label to use for name column of hmmCDR BED file. Needs to match priorCDR label. (default: "CDR")
 ```
 
 ## License
