@@ -8,11 +8,11 @@ import concurrent.futures
 from hmmCDR.parser import hmmCDR_parser
 
 class hmmCDR_prior_finder:
-    def __init__(self, merge_distance, window_size, min_size, prior_percentile,  enrichment, output_label):
-        self.merge_distance = merge_distance
+    def __init__(self, window_size, min_size,
+                 prior_percentile,  enrichment, output_label):
+
         self.window_size = window_size
         self.min_size = min_size
-
         self.prior_percentile = prior_percentile
 
         self.enrichment = enrichment
@@ -32,13 +32,14 @@ class hmmCDR_prior_finder:
         return windows
 
     def mean_within_windows(self, bed4Methyl, windows):
-        return pybedtools.BedTool.from_dataframe(windows).map(pybedtools.BedTool.from_dataframe(bed4Methyl), c=4, o='mean').to_dataframe(names=['chrom', 'start', 'end', 'mean_value'])
+        windows_means = pybedtools.BedTool.from_dataframe(windows).map(pybedtools.BedTool.from_dataframe(bed4Methyl), c=4, o='mean').to_dataframe(names=['chrom', 'start', 'end', 'mean_value'])
+        return windows_means
 
     def calculate_prior_percentiles(self, window_means):
         mean_values = pd.to_numeric(window_means['mean_value'].replace('.', np.nan)).dropna()
         return ( np.percentile(mean_values, self.prior_percentile) )
 
-    def create_prior_dataframe(self, merge_distance, windows_mean_df, priorCDR_score):
+    def create_prior_dataframe(self, windows_mean_df, priorCDR_score):
         windows_mean_df['mean_value'] = pd.to_numeric(windows_mean_df['mean_value'], errors='coerce')
         windows_mean_df = windows_mean_df.dropna(subset=['mean_value'])
         if self.enrichment:
@@ -48,7 +49,8 @@ class hmmCDR_prior_finder:
 
         priorCDR_windows = windows_mean_df[condition]
 
-        merged_windows = pybedtools.BedTool.from_dataframe(priorCDR_windows).merge(d=merge_distance)
+        # merge directly adjacent windows
+        merged_windows = pybedtools.BedTool.from_dataframe(priorCDR_windows).merge()
         merged_df = merged_windows.to_dataframe()
 
         if merged_df.empty:
@@ -64,7 +66,7 @@ class hmmCDR_prior_finder:
         windows = self.create_windows(bed4Methyl_chrom)
         windows_mean = self.mean_within_windows(bed4Methyl_chrom, windows)
         cdr_threshold = self.calculate_prior_percentiles(windows_mean)
-        prior_cdrs = self.create_prior_dataframe(self.merge_distance, windows_mean, cdr_threshold)
+        prior_cdrs = self.create_prior_dataframe(windows_mean, cdr_threshold)
         
         if prior_cdrs.empty:
             print(f'No prior subCDRs Detected for {chrom} with percentile - {self.prior_percentile}')
@@ -79,10 +81,11 @@ class hmmCDR_prior_finder:
                 return self.priors_single_chromosome(chrom, bed4Methyl_chrom)
             raise RuntimeError(f"Failed to detect prior subCDRs for {chrom} after {self.retries} retries with final percentile - {self.prior_percentile}")
 
-        return chrom, prior_cdrs
+        return chrom, prior_cdrs, windows_mean
 
     def priors_all_chromosomes(self, bed4Methyl_chrom_dict):
         hmmCDRpriors_chrom_dict = {}
+        windowsmean_chrom_dict = {}
         chromosomes = bed4Methyl_chrom_dict.keys()
 
         with concurrent.futures.ProcessPoolExecutor() as executor:
@@ -94,13 +97,15 @@ class hmmCDR_prior_finder:
             }
 
             for future in concurrent.futures.as_completed(futures):
-                chrom, priors_df = future.result()
+                chrom, priors_df, windows_mean_df = future.result()
                 hmmCDRpriors_chrom_dict[chrom] = priors_df
+                windowsmean_chrom_dict[chrom] = windows_mean_df
 
         self.chromosomes = chromosomes
         self.hmmCDRpriors_chrom_dict = hmmCDRpriors_chrom_dict
+        self.windowsmean_chrom_dict = hmmCDRpriors_chrom_dict
 
-        return hmmCDRpriors_chrom_dict
+        return hmmCDRpriors_chrom_dict, windowsmean_chrom_dict
 
 
 def main():
@@ -147,17 +152,25 @@ def main():
         window_size=args.window_size,
         min_size=args.min_size,
         prior_percentile=args.prior_percentile,
-        merge_distance=args.merge_distance, 
         enrichment=args.enrichment,
         output_label=args.output_label
     )
 
+    cdr_priors, window_means = priors.priors_all_chromosomes(bed4Methyl_chrom_dict)
+
     concatenated_priors = pd.concat(
-        priors.priors_all_chromosomes(bed4Methyl_chrom_dict).values(), axis=0
+        cdr_priors.values(), axis=0
+    )
+
+    concatenated_window_means = pd.concat(
+        window_means.values(), axis=0
     )
     
-    concatenated_priors.to_csv(args.output_path, sep='\t', index=False, header=False)
-    print(f"hmmCDR Priors saved to: {args.output_path}")
+    concatenated_priors.to_csv(f'{args.output_path}_priors.bed', sep='\t', index=False, header=False)
+    print(f"hmmCDR Priors saved to: f'{args.output_path}_priors.bed'")
+
+    concatenated_window_means.to_csv(f'{args.output_path}_windowmeans.bed', sep='\t', index=False, header=False)
+    print(f"hmmCDR Priors saved to: {args.output_path}_windowmeans.bed")
 
 
 if __name__ == "__main__":
