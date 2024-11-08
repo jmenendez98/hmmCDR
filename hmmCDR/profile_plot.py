@@ -185,7 +185,8 @@ def cenprofileplot(hap_dict, num_features, cenSat_name,
         ax.xaxis.set_ticks([])
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=600)
+    plt.savefig(output_path, dpi=200)
+
 
 def main():
 

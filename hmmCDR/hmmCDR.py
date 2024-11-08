@@ -12,17 +12,19 @@ from hmmCDR.find_priors import hmmCDR_prior_finder
 
 
 class hmmCDR:
-    def __init__(self, raw_thresholds, n_iter, 
-                 min_size, merge_distance, min_cdr_score, min_low_conf_score, 
+    def __init__(self, hmm_percentile_emissions, n_iter, merge_distance,
+                 min_cdr_size, min_cdr_score, min_low_conf_size, min_low_conf_score, 
                  main_color, low_conf_color, output_label,
                  w=0, x=25, y=50, z=75):
 
-        self.raw_thresholds = raw_thresholds
+        self.hmm_percentile_emissions = hmm_percentile_emissions
         self.n_iter = n_iter
         
-        self.min_size = min_size
         self.merge_distance = merge_distance
+
+        self.min_cdr_size = min_cdr_size
         self.min_cdr_score = min_cdr_score
+        self.min_low_conf_size = min_low_conf_size
         self.min_low_conf_score = min_low_conf_score
 
         self.main_color = main_color
@@ -67,7 +69,7 @@ class hmmCDR:
         return transition_matrix
     
     def calculate_emission_thresholds(self, bed4Methyl):
-        if self.raw_thresholds:
+        if not self.hmm_percentile_emissions:
             return sorted([self.w, self.x, self.y, self.z])
         
         methylation_scores = pd.to_numeric(bed4Methyl['name'].replace('.', np.nan), errors='coerce').dropna()
@@ -107,7 +109,7 @@ class hmmCDR:
         _, predicted_states = model.decode(emission_data, algorithm="viterbi")
         log_likelihood, responsibilities = model.score_samples(emission_data)
 
-        emission_labelled_bed4Methyl['CDR_score'] = [score[1] for score in responsibilities]
+        emission_labelled_bed4Methyl['CDR_score'] = [score[1]*100 for score in responsibilities]
 
         return emission_labelled_bed4Methyl
 
@@ -140,14 +142,14 @@ class hmmCDR:
         # Create DataFrame for high confidence CDRs
         single_chrom_CDRs = merge_CpG_dataframe(single_chrom_hmmCDR_scores, self.min_cdr_score)
         single_chrom_CDRs['size'] = single_chrom_CDRs['end'] - single_chrom_CDRs['start']
-        single_chrom_CDRs = single_chrom_CDRs[single_chrom_CDRs['size'] >= self.min_size]
+        single_chrom_CDRs = single_chrom_CDRs[single_chrom_CDRs['size'] >= self.min_cdr_size]
         cdr_scores_column = single_chrom_CDRs['score']
 
         # Handle low confidence CDRs if thresholds are defined
         if self.min_low_conf_score > 0.0 and self.min_low_conf_score < self.min_cdr_score:
             single_chrom_low_conf_CDRs = merge_CpG_dataframe(single_chrom_hmmCDR_scores, self.min_low_conf_score)
             single_chrom_low_conf_CDRs['size'] = single_chrom_low_conf_CDRs['end'] - single_chrom_low_conf_CDRs['start']
-            single_chrom_low_conf_CDRs = single_chrom_low_conf_CDRs[single_chrom_low_conf_CDRs['size'] >= self.min_size]
+            single_chrom_low_conf_CDRs = single_chrom_low_conf_CDRs[single_chrom_low_conf_CDRs['size'] >= self.min_low_conf_size]
 
             # subtract high confidence from low confidence CDRs
             cdr_bedtool = pybedtools.BedTool.from_dataframe(single_chrom_CDRs)
@@ -159,7 +161,7 @@ class hmmCDR:
             if not single_chrom_low_conf_CDRs.empty:
                 single_chrom_low_conf_CDRs = single_chrom_low_conf_CDRs[['chrom', 'start', 'end']]
                 single_chrom_low_conf_CDRs['name'] = f"low_conf_sub{self.output_label}"
-                single_chrom_low_conf_CDRs['score'] = low_conf_scores_column * 100
+                single_chrom_low_conf_CDRs['score'] = low_conf_scores_column
                 single_chrom_low_conf_CDRs['strand'] = '.'
         else:
             single_chrom_low_conf_CDRs = pd.DataFrame()
@@ -167,7 +169,7 @@ class hmmCDR:
         # Filter and prepare the final CDR DataFrame
         single_chrom_CDRs = single_chrom_CDRs[['chrom', 'start', 'end']]
         single_chrom_CDRs['name'] = f"sub{self.output_label}"
-        single_chrom_CDRs['score'] = cdr_scores_column * 100
+        single_chrom_CDRs['score'] = cdr_scores_column
         single_chrom_CDRs['strand'] = '.'
 
         # Combine and sort the results
@@ -189,8 +191,6 @@ class hmmCDR:
             'thickStart': 'int64',
             'thickEnd': 'int64'
         })
-
-        single_chrom_hmmCDR_scores.loc[:,'CDR_score'] = single_chrom_hmmCDR_scores.loc[:,'CDR_score']*100
 
         return single_chrom_hmmCDR_output.sort_values(by='start'), single_chrom_hmmCDR_scores
     
@@ -239,17 +239,18 @@ def main():
     argparser.add_argument('--min_valid_cov', type=int, default=15, help='Minimum Valid Coverage to consider a methylation site. (default: 15)')
 
     # hmmCDR Priors Flags
-    argparser.add_argument('--window_size', type=int, default=1000, help='Window size to calculate prior regions. (default: 1000)')
+    argparser.add_argument('--window_size', type=int, default=1190, help='Window size to calculate prior regions[~7 monomers]. (default: 1190)')
     argparser.add_argument('--prior_percentile', type=float, default=10, help='Percentile for finding  prior subCDR regions. (default: 10)')
-    argparser.add_argument('--prior_min_size', type=int, default=3000, help='Minimum size of prior subCDR regions. (default: 3000)')
+    argparser.add_argument('--prior_min_size', type=int, default=8330, help='Minimum size of prior subCDR regions[7 windows]. (default: 3000)')
 
     # HMM Flags
-    argparser.add_argument('--raw_thresholds', action='store_true', default=True, help='Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: True)')
+    argparser.add_argument('--hmm_percentile_emissions', action='store_true', default=False, help='Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: False)')
     argparser.add_argument('--n_iter', type=int, default=1, help='Maximum number of iteration allowed for the HMM. (default: 1)')
-    argparser.add_argument('--hmm_min_size', type=int, default=1000, help='Minimum size of region identified. (default: 1000)')
-    argparser.add_argument('--hmm_merge_distance', type=int, default=1001, help='Distance to merge adjacently labelled subCDR regions. (default: 1001)')
-    argparser.add_argument('--min_cdr_score', type=float, default=0.95, help='The minimum HMM score [0-1] required to call a CDR. (default: 0.95)')
-    argparser.add_argument('--min_low_conf_score', type=float, default=0.75, help='The minimum HMM score [0-1] required to call a low confidence CDR. (default: 0.75)')
+    argparser.add_argument('--hmm_merge_distance', type=int, default=1190, help='Distance to merge adjacently labelled subCDR regions. (default: 1190)')
+    argparser.add_argument('--min_cdr_size', type=int, default=1190, help='Minimum size of region identified. (default: 1190)')
+    argparser.add_argument('--min_cdr_score', type=float, default=99, help='The minimum HMM score [0-100] required to call a CDR. (default: 95)')
+    argparser.add_argument('--min_low_conf_size', type=int, default=0, help='Minimum size of region identified. (default: 0)')
+    argparser.add_argument('--min_low_conf_score', type=float, default=75, help='The minimum HMM score [0-100] required to call a low confidence CDR. (default: 75)')
     argparser.add_argument('--main_color', type=str, default='50,50,255', help='Color to dictate main regions. (default: 50,50,255)')
     argparser.add_argument('--low_conf_color', type=str, default='100,150,200', help='Color to dictate low confidence regions. (default: 100,150,200)')
     argparser.add_argument('-w', type=int, default=0, help='Threshold of non-zero methylation percentile to be classified as very low (default: 0)')
@@ -298,17 +299,18 @@ def main():
     
     if args.output_all:
         concatenated_priors = pd.concat(priors_chrom_dict.values(), axis=0)
-        concatenated_priors.to_csv(f'{output_prefix}_priorCDRs.bed', sep='\t', index=False, header=False)
+        concatenated_priors.to_csv(f'{output_prefix}_priorCDR.bed', sep='\t', index=False, header=False)
 
         concatenated_windows = pd.concat(prior_windows_chrom_dict.values(), axis=0)
         concatenated_windows.to_csv(f'{output_prefix}_windowmeans.bedgraph', sep='\t', index=False, header=False)
 
     CDRhmm = hmmCDR(
-        raw_thresholds=args.raw_thresholds,
+        hmm_percentile_emissions=args.hmm_percentile_emissions,
         n_iter=args.n_iter,
-        min_size=args.hmm_min_size,
         merge_distance=args.hmm_merge_distance, 
-        min_cdr_score=args.min_cdr_score,
+        min_cdr_size=args.min_cdr_size,
+        min_cdr_score=args.min_cdr_score,        
+        min_low_conf_size=args.min_low_conf_size,
         min_low_conf_score=args.min_low_conf_score,
         main_color=args.main_color,
         low_conf_color=args.low_conf_color,

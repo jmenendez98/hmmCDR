@@ -20,7 +20,11 @@ class hmmCDR_parser:
         if not os.path.exists(path) or os.stat(path).st_size == 0:
             raise ValueError(f"bedMethyl file {path} does not exist or is empty.")
         
-        bedMethyl = pd.read_csv(path, sep='\t', header=None, index_col=None)
+        with open(path, 'r') as file:
+            first_line = file.readline()
+            skip_line = [False] if first_line.startswith("track") else [0]
+        
+        bedMethyl = pd.read_csv(path, sep='\t', header=None, index_col=None, comment="#", skiprows=skip_line)
         expected_columns = 4 if self.bedgraph else 18
         if len(bedMethyl.columns) != expected_columns:
             raise ValueError(f"Valid {'bedgraph' if self.bedgraph else 'bedMethyl'} should have {expected_columns} columns.")
@@ -42,7 +46,11 @@ class hmmCDR_parser:
         if not os.path.exists(path) or os.stat(path).st_size == 0:
             raise ValueError(f"cenSat file {path} does not exist or is empty.")
         
-        cenSat = pd.read_csv(path, sep='\t', header=None, index_col=None)
+        with open(path, 'r') as file:
+            first_line = file.readline()
+            skip_line = [False] if first_line.startswith("track") else [0]
+        
+        cenSat = pd.read_csv(path, sep='\t', header=None, index_col=None, comment="#", skiprows=skip_line)
 
         if len(cenSat.columns) > 3:
             cenSat = cenSat[cenSat[3].str.contains('|'.join(self.sat_type))]
