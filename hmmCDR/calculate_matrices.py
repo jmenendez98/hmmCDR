@@ -184,11 +184,11 @@ class calculate_matrices:
         
         # Get the first True index for each row (vectorized operation)
         methylation_w_emission_priors_df = methylation_w_priors_df.copy()
-        methylation_w_emission_priors_df['emissions'] = np.argmax(comparison_matrix, axis=1)
+        methylation_w_emission_priors_df['emission'] = np.argmax(comparison_matrix, axis=1)
         
         # Handle cases where all comparisons are False
         max_emission = len(emission_thresholds)
-        methylation_w_emission_priors_df.loc[~comparison_matrix.any(axis=1), 'emissions'] = max_emission - 1
+        methylation_w_emission_priors_df.loc[~comparison_matrix.any(axis=1), 'emission'] = max_emission - 1
 
         return methylation_w_emission_priors_df
 
@@ -209,7 +209,7 @@ class calculate_matrices:
         
         for state in [0, 1]:
             state_subset = methylation_w_emission_priors_df[methylation_w_emission_priors_df['prior'] == state]
-            emission_counts = np.bincount(state_subset['emissions'], minlength=4)
+            emission_counts = np.bincount(state_subset['emission'], minlength=4)
             
             # Normalize to get probabilities
             emission_matrix[state, :] = emission_counts / emission_counts.sum() if emission_counts.sum() > 0 else 0
@@ -306,11 +306,12 @@ class calculate_matrices:
         emission_matrix = self.calculate_emission_matrix(methylation_w_emission_priors_df)
         transition_matrix = self.calculate_transition_matrix(methylation_w_priors_df)
 
-        return chrom, cdr_prior_df, window_mean_bedtool.saveas().to_dataframe(), emission_matrix, transition_matrix
+        return chrom, cdr_prior_df, window_mean_bedtool.saveas().to_dataframe(), methylation_w_emission_priors_df, emission_matrix, transition_matrix
 
     def priors_all_chromosomes(self, methylation_chrom_dict, prior_percentile, prior_threshold):
         priors_chrom_dict = {}
         windowmean_chrom_dict = {}
+        labelled_methylation_chrom_dict = {}
         emission_matrix_chrom_dict = {}
         transition_matrix_chrom_dict = {}
         chromosomes = methylation_chrom_dict.keys()
@@ -327,13 +328,14 @@ class calculate_matrices:
             }
 
             for future in concurrent.futures.as_completed(futures):
-                chrom, cdr_prior, window_mean, emission_matrix, transition_matrix = future.result()
+                chrom, cdr_prior, window_mean, labelled_methylation, emission_matrix, transition_matrix = future.result()
                 priors_chrom_dict[chrom] = cdr_prior
                 windowmean_chrom_dict[chrom] = window_mean
+                labelled_methylation_chrom_dict[chrom] = labelled_methylation
                 emission_matrix_chrom_dict[chrom] = emission_matrix
                 transition_matrix_chrom_dict[chrom] = transition_matrix
 
-        return priors_chrom_dict, windowmean_chrom_dict, emission_matrix_chrom_dict, transition_matrix_chrom_dict
+        return priors_chrom_dict, windowmean_chrom_dict, labelled_methylation_chrom_dict, emission_matrix_chrom_dict, transition_matrix_chrom_dict
 
 
 def main():
@@ -346,7 +348,7 @@ def main():
     
     # bed_parser arguments
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
-    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
+    argparser.add_argument('-s', '--sat_type', type=str, default='active_hor', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
     argparser.add_argument('--bedgraph', action='store_true', default=False, help='Flag indicating if the input is a bedgraph. (default: False)')
     argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum valid coverage to consider a methylation site(read from full modkit pileup files). (default: 10)')
     
@@ -390,7 +392,7 @@ def main():
         output_label = args.output_label
     )
 
-    priors_chrom_dict, windowmean_chrom_dict, emission_matrix_chrom_dict, transition_matrix_chrom_dict = priors.priors_all_chromosomes(
+    priors_chrom_dict, windowmean_chrom_dict, labelled_methylation_chrom_dict, emission_matrix_chrom_dict, transition_matrix_chrom_dict = priors.priors_all_chromosomes(
         methylation_chrom_dict = methylation_chrom_dict, 
         prior_percentile = args.prior_use_percentile, 
         prior_threshold = args.prior_threshold
