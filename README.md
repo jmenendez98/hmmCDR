@@ -1,5 +1,3 @@
-
-
 # `hmmCDR`
 
 [![Conda](https://img.shields.io/conda/vn/jmmenend/hmmcdr?label=conda&color=green)](https://anaconda.org/jmmenend/hmmcdr)
@@ -22,7 +20,7 @@ conda install jmmenend::hmmcdr -c bioconda -c conda-forge
 
 `hmmCDR` can be run with `docker`.
 ```bash
-docker run -v .:/data jmmenend/hmmcdr:0.2.3 # YOUR FLAGS #
+docker run -v .:/data jmmenend/hmmcdr:0.2.3 # INPUTS/FLAGS # 
 ```
 
 `hmmCDR` can be install through `pypi`. **NOTE**: This requires a separate installation of `bedtools` in the environment.
@@ -32,20 +30,14 @@ pip install hmmCDR
 
 ## Description:
 
-<img src="imgs/CDR_HMM_diagram.png" alt="HMM Diagram" width="600">
+`<img src="imgs/CDR_HMM_diagram.png" alt="HMM Diagram" width="600">`
+* **Replace with figure 1 from HMM CDR Paper...**              
 
-This software is designed to find Centromere Dip Regions (CDRs), subCDRs, and their boundaries within the centromeric active alpha satellite (alpha-sat) array. CDRs are a uniquely hypo-methylated region within the typically hyper-methylated alpha-sat array. CDRs are tightly associated with the histone mark Centromere Protein A (CENP-A). This makes establishing accurate boundaries to CDRs and subCDRs essential to studying their relationship with CENPA. This method combines previous methods of identifying CDRs, through a sliding-window approach, with a Hidden Markov Model(HMM) that uses these sliding window estimates as a prior. The advantage to this two-fold approach is seen at the edges of the CDRs. A sliding window algorithm has a hard time drawing precise boundaries and identifying transitions in/out of the CDRs, whereas the HMM greatly improves identification of these regions. 
+This software is designed to find Centromere Dip Regions (CDRs), subCDRs, and their boundaries within the centromeric active alpha satellite (alpha-sat) array. CDRs are a uniquely hypo-methylated region within the typically hyper-methylated alpha-sat array. CDRs are tightly associated with the histone mark Centromere Protein A (CENP-A). This makes establishing accurate boundaries to CDRs and subCDRs essential to studying their relationship with CENPA. This method combines previous methods of identifying CDRs, through a sliding-window approach, with a Hidden Markov Model (HMM) that uses these sliding window estimates as a prior. The advantage to this two-fold approach is seen at the edges of the CDRs. A sliding window algorithm has a hard time drawing precise boundaries and identifying transitions in/out of the CDRs, whereas the HMM greatly improves identification of these regions. 
 
+This python package takes in a bed file of 5mC methylation in aggregate, preferably from [modkit](https://github.com/nanoporetech/modkit), and an [Centromere-Satellite Annotation](https://github.com/kmiga/alphaAnnotation) (CenSat) file. The aggregate methylation file is used to determine where the 5mC depleted regions are, and the CenSat Annotation is used to subset the methylation files to only the alpha-sat array. This improves both the speed and accuracy of the CDR identification, as outside this region the trend of hypermethylation is not as strong. This package also processes each chromosome separately and in parallel to further improve speed.
 
-
-<img src="imgs/hmmCDR_example.png" alt="Example Improvements" width="600">
-
-\* in this image the lighter blue represents a CDR transition. 
-
-This python package takes in a bed file of 5mC methylation in aggregate, preferably from [modkit](https://github.com/nanoporetech/modkit), and an [Centromere-Satellite Annotation](https://github.com/kmiga/alphaAnnotation)(CenSat) file. The aggregate methylation file is used to determine where the 5mC depleted regions are, and the CenSat Annotation is used to subset the methylation files to only the alpha-sat array. This improves both the speed and accuracy of the CDR identification, as outside this region the trend of hypermethylation is not as strong. This package also processes each chromosome separately and in parallel to further improve speed.
-
-
-## Input Description:
+## Input Details:
 ### 1. Modkit bedMethyl (Refer to https://github.com/nanoporetech/modkit)    
 
 | column | name                  | description                                                                    | type  |
