@@ -6,7 +6,7 @@ import tempfile
 import shutil
 
 class bed_parser:
-    def __init__(self, min_valid_cov=0, mod_code=None, sat_type=None, bedgraph=False,
+    def __init__(self, min_valid_cov=0, mod_code=None, bedgraph=False, sat_type=None, 
                  temp_dir=None, cache=True):
         """
         Initialize the parser with optional filtering parameters

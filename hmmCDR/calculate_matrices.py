@@ -129,15 +129,14 @@ class calculate_matrices:
         Returns:
             pd.Dataframe: Pandas dataframe chrom positions, fraction modified, and prior state.
         """
-        methylation_in_priors_bedtool = methylation_bedtool.intersect(
+
+        methylation_w_priors_bedtool = methylation_bedtool.intersect(
             cdr_prior_bedtool, 
-            wao=True,  # Write all original entries
+            c=True
         )
 
-        # Convert methylation bedtool with priors assigned to pd.Dataframe
-        methylation_w_priors_df = methylation_in_priors_bedtool.to_dataframe(names=np.arange(0,8,1))
-        methylation_w_priors_df = methylation_w_priors_df.iloc[:, [0,1,2,3,7]]
-        methylation_w_priors_df.columns = ['chrom', 'start', 'end' ,'fractionmodified', 'prior']
+        methylation_w_priors_df = methylation_w_priors_bedtool.saveas().to_dataframe()
+        methylation_w_priors_df.columns = ['chrom', 'start', 'end', 'fractionmodified', 'prior']
 
         return methylation_w_priors_df
     
@@ -215,6 +214,10 @@ class calculate_matrices:
             # Normalize to get probabilities
             emission_matrix[state, :] = emission_counts / emission_counts.sum() if emission_counts.sum() > 0 else 0
 
+        # Add a check to ensure rows sum to one (with a small tolerance for floating-point precision)
+        assert np.allclose(emission_matrix.sum(axis=1), 1.0, rtol=1e-5), \
+            f"Transition matrix rows do not sum to one:\n{emission_matrix}"
+
         return emission_matrix
 
     def calculate_transition_matrix(self, methylation_w_priors_df):
@@ -248,6 +251,10 @@ class calculate_matrices:
         row_sums[row_sums == 0] = 1  # Avoid division by zero
         transition_matrix = transition_matrix / row_sums
 
+        # Add a check to ensure rows sum to one (with a small tolerance for floating-point precision)
+        assert np.allclose(transition_matrix.sum(axis=1), 1.0, rtol=1e-5), \
+            f"Transition matrix rows do not sum to one:\n{transition_matrix}"
+
         return transition_matrix
 
     def priors_single_chromosome(self, chrom, methylation_per_chrom, prior_percentile, prior_threshold):
@@ -267,41 +274,39 @@ class calculate_matrices:
         window_bedtool = self.create_chrom_windows(methylation_bedtool) # Create windows
         window_mean_bedtool = self.mean_within_windows(methylation_bedtool, window_bedtool) # Find mean within windows
 
-        for attempt in range(self.MAX_RETRIES):
-            # Determine current CDR threshold
-            if prior_percentile: 
-                prior_threshold = self.find_prior_percentile(window_mean_bedtool, prior_threshold)
-            else:
-                prior_threshold = prior_threshold
+        # Determine current CDR threshold
+        if prior_percentile: 
+            prior_threshold = self.find_prior_percentile(window_mean_bedtool, prior_threshold)
+        else:
+            prior_threshold = prior_threshold
 
-            # Find priors using current threshold
-            cdr_prior_bedtool = self.find_priors(window_mean_bedtool, prior_threshold)
+        # Find priors using current threshold
+        cdr_prior_bedtool = self.find_priors(window_mean_bedtool, prior_threshold)
 
-            # add priors on to methylation bedtool
-            methylation_w_priors_df = self.assign_priors(methylation_bedtool, cdr_prior_bedtool)
-
-            # assign emissions to methylation bedtool
-            methylation_w_emission_priors_df = self.assign_emissions(methylation_w_priors_df, self.calculate_emission_thresholds(methylation_w_priors_df))
-
-            print( methylation_w_emission_priors_df.head() )
-
-            # calculate emission and transition matrices with assigned priors
-            emission_matrix = self.calculate_emission_matrix(methylation_w_emission_priors_df)
-            transition_matrix = self.calculate_transition_matrix(methylation_w_priors_df)
-
-            print(f'emission_matrix:\n {emission_matrix}')
-            print(f'transition_matrix:\n {transition_matrix}')
-
-            return chrom, cdr_prior_bedtool.to_dataframe(), window_mean_bedtool.to_dataframe(), emission_matrix, transition_matrix
-            
+        cdr_prior_df = cdr_prior_bedtool.saveas().to_dataframe()
+ 
+        if cdr_prior_df.empty:
             # If no priors found, adjust threshold
-            print(f'No prior CDR Found on {chrom} with threshold - {threshold}')
-        
-        # If we've exhausted all retry attempts
-        raise RuntimeError(
-            f"Failed to detect prior subCDRs for {chrom} after {self.MAX_RETRIES} retries."
-            f"with final percentile - {prior_threshold}"
-        )
+            print(f'No prior CDRs Found on {chrom} with prior threshold - {prior_threshold}')
+            print(f'Continuing with defaults:\n emission matrix: [[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]]\ntransition matrix: [[0.9999,0.003],[0.0001,0.997]]')
+            emission_matrix = np.array([[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]])
+            transition_matrix = np.array([[0.9999,0.003],[0.0001,0.997]])
+
+            return chrom, cdr_prior_df, cdr_prior_bedtool, emission_matrix, transition_matrix
+
+        # add priors on to methylation bedtool
+        methylation_w_priors_df = self.assign_priors(methylation_bedtool, pybedtools.BedTool.from_dataframe(cdr_prior_df))
+
+        # assign emissions to methylation bedtool
+        methylation_w_emission_priors_df = self.assign_emissions(methylation_w_priors_df, self.calculate_emission_thresholds(methylation_w_priors_df))
+
+        methylation_w_emission_priors_df.to_csv('methylation_w_emission_priors.tsv',sep='\t',index=None)
+
+        # calculate emission and transition matrices with assigned priors
+        emission_matrix = self.calculate_emission_matrix(methylation_w_emission_priors_df)
+        transition_matrix = self.calculate_transition_matrix(methylation_w_priors_df)
+
+        return chrom, cdr_prior_df, window_mean_bedtool.saveas().to_dataframe(), emission_matrix, transition_matrix
 
     def priors_all_chromosomes(self, methylation_chrom_dict, prior_percentile, prior_threshold):
         priors_chrom_dict = {}
@@ -335,9 +340,9 @@ def main():
     argparser = argparse.ArgumentParser(description='Process bedMethyl and CenSat BED file to produce hmmCDR priors')
     
     # Required arguments
-    argparser.add_argument('bedmethyl_path', type=str, help='Path to the bedMethyl file')
-    argparser.add_argument('censat_path', type=str, help='Path to the CenSat BED file')
-    argparser.add_argument('output_path', type=str, help='Path to the output priorCDRs BED file')
+    argparser.add_argument('bedmethyl', type=str, help='Path to the bedmethyl file')
+    argparser.add_argument('censat', type=str, help='Path to the censat BED file')
+    argparser.add_argument('output', type=str, help='Path to the output BED file')
     
     # Parser Arguments
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
@@ -360,11 +365,9 @@ def main():
     argparser.add_argument('-y', type=float, default=66.6, help='Threshold of non-zero methylation percentile to be classified as medium (default: 66.6)')
     argparser.add_argument('-z', type=float, default=100.0, help='Threshold of non-zero methylation percentile to be classified as high (default: 100.0)')
 
-    argparser.add_argument('--save_intermediates', action='store_true', default=False, help="Set to true if you would like to save intermediates(filtered beds+window means). (default: False)")
-    
     args = argparser.parse_args()
-
     sat_types = [st.strip() for st in args.sat_type.split(',')]
+    output_prefix = os.path.splitext(args.output)[0]
 
     parseCDRBeds = bed_parser(
         mod_code = args.mod_code,
@@ -374,8 +377,8 @@ def main():
     )
 
     methylation_chrom_dict = parseCDRBeds.process_files(
-        bedmethyl_path = args.bedmethyl_path, 
-        censat_path = args.censat_path
+        bedmethyl_path = args.bedmethyl, 
+        censat_path = args.censat
     )
 
     priors = calculate_matrices(
@@ -393,6 +396,24 @@ def main():
         prior_percentile = args.prior_use_percentile, 
         prior_threshold = args.prior_threshold
     )
+
+    # Concatenate, sort and save bed files
+    combined_priors = pd.concat(priors_chrom_dict.values(), ignore_index=True)
+    combined_priors = combined_priors.sort_values(by=combined_priors.columns[:2].tolist())
+    combined_priors.to_csv(f'{output_prefix}_priors.bed', sep='\t', index=False, header=False)
+
+    combined_windowmean = pd.concat(windowmean_chrom_dict.values(), ignore_index=True)
+    combined_windowmean = combined_windowmean.sort_values(by=combined_windowmean.columns[:2].tolist())
+    combined_windowmean.to_csv(f'{output_prefix}_windowmean.bed', sep='\t', index=False, header=False)
+
+    # Save matrices to a text file with key: numpy array representation
+    with open(f'{output_prefix}_emission_matrices.txt', 'w') as f:
+        for key, matrix in emission_matrix_chrom_dict.items():
+            f.write(f"{key}: {matrix.tolist()}\n")
+
+    with open(f'{output_prefix}_transition_matrices.txt', 'w') as f:
+        for key, matrix in transition_matrix_chrom_dict.items():
+            f.write(f"{key}: {matrix.tolist()}\n")
 
 
 if __name__ == "__main__":
