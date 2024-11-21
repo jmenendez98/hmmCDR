@@ -6,7 +6,12 @@
 [![DockerHub](https://img.shields.io/docker/v/jmmenend/hmmcdr?label=DockerHub&color=blue)](https://hub.docker.com/r/jmmenend/hmmcdr)
 [![pypi](https://img.shields.io/pypi/v/hmmCDR)](https://pypi.org/project/hmmCDR/0.1.4/)
 
-`hmmCDR` is a set of python scripts to predict CDR regions of active alpha satellite arrays. It takes a bedMethyl from `modkit` and a set CenSat Annotations in order to make predictions.
+`hmmCDR` is a set of python scripts to automate the prediction of hypomethylated Centromere Dip Regions (CDRs) within active alpha satellite HOR arrays. Utilizes an Hidden Markov Model to allow finer resolution of subCDR boundaries.
+
+**Inputs:**      
+1. bedmethyl, preferably generated with [`modkit`](https://github.com/nanoporetech/modkit) `pileup` (Or bedgraph of 5mC methylation with the `--bedgraph` flag)
+2. Centromeric Satellite Annotations, designed for use with annotations generated using https://github.com/kmiga/alphaAnnotation.
+3. Output file name
 
 ## Installation: 
 
@@ -17,15 +22,13 @@ conda install jmmenend::hmmcdr -c bioconda -c conda-forge
 
 `hmmCDR` can be run with `docker`.
 ```bash
-docker run -v .:/data jmmenend/hmmcdr:0.1.4 # YOUR FLAGS #
+docker run -v .:/data jmmenend/hmmcdr:0.2.3 # YOUR FLAGS #
 ```
 
-`hmmCDR` can be install through `pypi`. Although this requires a separate installation of `bedtools`.
+`hmmCDR` can be install through `pypi`. **NOTE**: This requires a separate installation of `bedtools` in the environment.
 ```bash
 pip install hmmCDR
 ```
-
-NOTE: If you chose it install with only `pip` you need to install `bedtools` as well.
 
 ## Description:
 
@@ -42,8 +45,8 @@ This software is designed to find Centromere Dip Regions (CDRs), subCDRs, and th
 This python package takes in a bed file of 5mC methylation in aggregate, preferably from [modkit](https://github.com/nanoporetech/modkit), and an [Centromere-Satellite Annotation](https://github.com/kmiga/alphaAnnotation)(CenSat) file. The aggregate methylation file is used to determine where the 5mC depleted regions are, and the CenSat Annotation is used to subset the methylation files to only the alpha-sat array. This improves both the speed and accuracy of the CDR identification, as outside this region the trend of hypermethylation is not as strong. This package also processes each chromosome separately and in parallel to further improve speed.
 
 
-## Inputs:
-### 1. Modkit Pileup bedMethyl File:   
+## Input Description:
+### 1. Modkit bedMethyl (Refer to https://github.com/nanoporetech/modkit)    
 
 | column | name                  | description                                                                    | type  |
 |--------|-----------------------|--------------------------------------------------------------------------------|-------|
@@ -66,7 +69,7 @@ This python package takes in a bed file of 5mC methylation in aggregate, prefera
 | 17     | N<sub>diff</sub>      | Refer to [modkit github](https://github.com/nanoporetech/modkit)               | int   |
 | 18     | N<sub>nocall</sub>    | Refer to [modkit github](https://github.com/nanoporetech/modkit)               | int   |
 
-### 2.  CenSat Annotation bed
+### 2.  CenSat Annotation (Refer to https://github.com/kmiga/alphaAnnotation)         
 
 | column | name                  | description                                                                    | type  |
 |--------|-----------------------|--------------------------------------------------------------------------------|-------|
@@ -83,49 +86,70 @@ This python package takes in a bed file of 5mC methylation in aggregate, prefera
 
 ### Usage:
 ```
-usage: hmmCDR [-h] [-m MOD_CODE] [-s SAT_TYPE] [--bedgraph] [--min_valid_cov MIN_VALID_COV] [--window_size WINDOW_SIZE] [--prior_percentile PRIOR_PERCENTILE]
-              [--raw_thresholds] [--n_iter N_ITER] [--remove_transitions] [-w W] [-x X] [-y Y] [-z Z] [--merge_distance MERGE_DISTANCE] [--min_size MIN_SIZE]
-              [--enrichment] [--main_color MAIN_COLOR] [--transition_color TRANSITION_COLOR] [--save_intermediates] [--output_label OUTPUT_LABEL]
-              bedMethyl_path cenSat_path output_path
+usage: hmmCDR [-h] [-m MOD_CODE] [--bedgraph] [--min_valid_cov MIN_VALID_COV] [-s SAT_TYPE] [--pre_subset_censat] [--window_size WINDOW_SIZE] [--step_size STEP_SIZE] [--prior_threshold PRIOR_THRESHOLD] [--prior_use_percentile] [--min_prior_size MIN_PRIOR_SIZE] [--enrichment]
+              [--percentile_emissions] [-w W] [-x X] [-y Y] [-z Z] [--e_matrix E_MATRIX] [--t_matrix T_MATRIX] [--n_iter N_ITER] [--tol TOL] [--hmm_merge_distance HMM_MERGE_DISTANCE] [--min_cdr_size MIN_CDR_SIZE] [--min_cdr_score MIN_CDR_SCORE]
+              [--min_low_conf_size MIN_LOW_CONF_SIZE] [--min_low_conf_score MIN_LOW_CONF_SCORE] [--main_color MAIN_COLOR] [--low_conf_color LOW_CONF_COLOR] [--min_subCDRs MIN_SUBCDRS] [--large_merge_distance LARGE_MERGE_DISTANCE] [--output_all] [--output_label OUTPUT_LABEL]
+              bedmethyl censat output
 
 Process input files with optional parameters.
 
 positional arguments:
-  bedMethyl_path        Path to the bedMethyl file
-  cenSat_path           Path to the CenSat BED file
-  output_path           Output Path for the output files
+  bedmethyl             Path to the bedMethyl file
+  censat                Path to the CenSat BED file
+  output                Output Path for the output files
 
 options:
   -h, --help            show this help message and exit
   -m MOD_CODE, --mod_code MOD_CODE
                         Modification code to filter bedMethyl file (default: "m")
-  -s SAT_TYPE, --sat_type SAT_TYPE
-                        Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")
   --bedgraph            Flag indicating if the input is a bedgraph. (default: False)
   --min_valid_cov MIN_VALID_COV
-                        Minimum Valid Coverage to consider a methylation site. (default: 10)
+                        Minimum valid coverage to consider a methylation site (read from full modkit pileup files). (default: 10)
+  -s SAT_TYPE, --sat_type SAT_TYPE
+                        Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")
+  --pre_subset_censat   Set flag if your annotations bed file is already subset to only the region you desire. (default: False)
   --window_size WINDOW_SIZE
-                        Window size to calculate prior regions. (default: 510)
-  --prior_percentile PRIOR_PERCENTILE
-                        Percentile for finding priorCDR regions. (default: 10)
-  --raw_thresholds      Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: True)
-  --n_iter N_ITER       Maximum number of iteration allowed for the HMM. (default: 1)
-  --remove_transitions  Do not report transitions in final hmmCDR output file. (default: False)
-  -w W                  Threshold of non-zero methylation percentile to be classified as very low (default: 0)
-  -x X                  Threshold of non-zero methylation percentile to be classified as low (default: 25)
-  -y Y                  Threshold of non-zero methylation percentile to be classified as medium (default: 50)
-  -z Z                  Threshold of non-zero methylation percentile to be classified as high (default: 75)
-  --merge_distance MERGE_DISTANCE
-                        Distance to merge adjacently labelled regions. (default: 1021)
-  --min_size MIN_SIZE   Minimum size for regions. (default: 3000)
+                        Window size to calculate prior regions. (default: 1190)
+  --step_size STEP_SIZE
+                        Step size when calculation windows for priors. (default: 1190)
+  --prior_threshold PRIOR_THRESHOLD
+                        Threshold for determining if a window is a CDR. Uses this percentile if --prior_use_percentile is passed (default: 30.0)
+  --prior_use_percentile
+                        Whether or not to use percentile when calculating windowing priors. (default: False)
+  --min_prior_size MIN_PRIOR_SIZE
+                        Minimum size for CDR regions. (default: 8330)
   --enrichment          Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)
+  --percentile_emissions
+                        Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: False)
+  -w W                  Threshold of non-zero methylation percentile to be classified as None (default: 0.0)
+  -x X                  Threshold of non-zero methylation percentile to be classified as low (default: 33.3)
+  -y Y                  Threshold of non-zero methylation percentile to be classified as medium (default: 66.6)
+  -z Z                  Threshold of non-zero methylation percentile to be classified as high (default: 100.0)
+  --e_matrix E_MATRIX   Custom Emission Matrix (Ex: [[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]])
+  --t_matrix T_MATRIX   Custom Transition Matrix (Ex: [[0.9999,0.003],[0.0001,0.997]])
+  --n_iter N_ITER       Maximum number of iteration allowed for the HMM. (default: 1)
+  --tol TOL             Cutoff for model convergence in hmmlearn. (default: 10)
+  --hmm_merge_distance HMM_MERGE_DISTANCE
+                        Distance to merge adjacently labelled subCDR regions. (default: 1190)
+  --min_cdr_size MIN_CDR_SIZE
+                        Minimum size of region identified. (default: 1190)
+  --min_cdr_score MIN_CDR_SCORE
+                        The minimum HMM score [0-100] required to call a CDR. (default: 95)
+  --min_low_conf_size MIN_LOW_CONF_SIZE
+                        Minimum size of region identified. (default: 0)
+  --min_low_conf_score MIN_LOW_CONF_SCORE
+                        The minimum HMM score [0-100] required to call a low confidence CDR. (default: 75)
   --main_color MAIN_COLOR
                         Color to dictate main regions. (default: 50,50,255)
-  --transition_color TRANSITION_COLOR
-                        Color to dictate transition regions. (default: 100,150,200)
-  --save_intermediates  Set to true if you would like to save intermediates(filtered beds+window means). (default: False)
+  --low_conf_color LOW_CONF_COLOR
+                        Color to dictate low confidence regions. (default: 100,150,200)
+  --min_subCDRs MIN_SUBCDRS
+                        Minimum number of subCDRs to report a CDR. (default: 3)
+  --large_merge_distance LARGE_MERGE_DISTANCE
+                        Distance to merge subCDRs into a larger CDR annotation. (default: 200000)
+  --output_all          Set to true if you would like to save all intermediate filesf. (default: False)
   --output_label OUTPUT_LABEL
-                        Label to use for name column of hmmCDR BED file. Needs to match priorCDR label. (default: "CDR")
+                        Label to use for name column of hmmCDR BED file. Needs to match priorCDR label. (default: "subCDR")
 ```
 
 ## License

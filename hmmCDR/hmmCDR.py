@@ -192,10 +192,11 @@ def parse_command_line_arguments():
 
     # bed_parser arguments
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
-    argparser.add_argument('-s', '--sat_type', type=str, default='active_hor', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
     argparser.add_argument('--bedgraph', action='store_true', default=False, help='Flag indicating if the input is a bedgraph. (default: False)')
-    argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum valid coverage to consider a methylation site(read from full modkit pileup files). (default: 10)')
-    
+    argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum valid coverage to consider a methylation site (read from full modkit pileup files). (default: 10)')
+    argparser.add_argument('-s', '--sat_type', type=str, default='active_hor', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
+    argparser.add_argument('--pre_subset_censat', action='store_true', default=False, help='Set flag if your annotations bed file is already subset to only the region you desire. (default: False)')
+
     # calculate_matrices arguments
     argparser.add_argument('--window_size', type=int, default=1190, help='Window size to calculate prior regions. (default: 1190)')
     argparser.add_argument('--step_size', type=int, default=1190, help='Step size when calculation windows for priors. (default: 1190)')
@@ -245,9 +246,10 @@ def main():
     # Parse in the bed files:
     parseCDRBeds = bed_parser(
         mod_code=args.mod_code,
-        sat_type=sat_types,
         bedgraph=args.bedgraph,
-        min_valid_cov=args.min_valid_cov
+        min_valid_cov=args.min_valid_cov,
+        sat_type=sat_types,
+        pre_subset_censat=args.pre_subset_censat
     )
 
     methylation_chrom_dict = parseCDRBeds.process_files(

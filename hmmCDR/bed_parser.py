@@ -6,7 +6,8 @@ import tempfile
 import shutil
 
 class bed_parser:
-    def __init__(self, min_valid_cov=0, mod_code=None, bedgraph=False, sat_type=None, 
+    def __init__(self,  mod_code=None, min_valid_cov=0, bedgraph=False, 
+                 sat_type=None, pre_subset_censat=False, 
                  temp_dir=None, cache=True):
         """
         Initialize the parser with optional filtering parameters
@@ -18,11 +19,12 @@ class bed_parser:
             temp_dir (str): Directory for temporary file storage
             cache (bool): Enable caching of BEDTools operations
         """
-        self.min_valid_cov = min_valid_cov
         self.mod_code = mod_code
-        self.sat_type = sat_type or []
+        self.min_valid_cov = min_valid_cov
         self.bedgraph = bedgraph
-        
+        self.sat_type = sat_type or []
+        self.pre_subset_censat = pre_subset_censat
+
         # Set up temporary directory for intermediate files
         self.temp_dir = temp_dir or tempfile.gettempdir()
         
@@ -77,15 +79,18 @@ class bed_parser:
                         return False
                 bedtool = bedtool.filter(bedmethyl_filter)
 
-        elif file_type == 'censat' and self.sat_type:
-            # Filter by satellite type
-            def censat_filter(feature):
-                try:
-                    return any(sat.lower() in feature[3].lower() 
-                               for sat in self.sat_type)
-                except (IndexError, AttributeError):
-                    return False
-            bedtool = bedtool.filter(censat_filter)
+        elif file_type == 'censat':
+            if self.pre_subset_censat:
+                return bedtool
+            else:
+                # Filter by satellite type
+                def censat_filter(feature):
+                    try:
+                        return any(sat.lower() in feature[3].lower() 
+                                for sat in self.sat_type)
+                    except (IndexError, AttributeError):
+                        return False
+                bedtool = bedtool.filter(censat_filter)
         
         return bedtool
     
