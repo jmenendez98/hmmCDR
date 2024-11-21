@@ -3,7 +3,6 @@ import numpy as np
 import pybedtools
 import os
 import tempfile
-import functools
 import shutil
 
 class bed_parser:
@@ -35,7 +34,6 @@ class bed_parser:
         if shutil.which("bedtools") is None:
             raise EnvironmentError("bedtools is required but not installed. Please install it before using this package.")
 
-    @functools.lru_cache(maxsize=128)
     def read_and_filter_bedfile(self, filepath, file_type='bedmethyl'):
         """
         Read and filter BED-like files with advanced optimizations
