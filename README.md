@@ -2,7 +2,7 @@
 
 [![Conda](https://img.shields.io/conda/vn/jmmenend/hmmcdr?label=conda&color=green)](https://anaconda.org/jmmenend/hmmcdr)
 [![DockerHub](https://img.shields.io/docker/v/jmmenend/hmmcdr?label=DockerHub&color=blue)](https://hub.docker.com/r/jmmenend/hmmcdr)
-[![pypi](https://img.shields.io/pypi/v/hmmCDR)](https://pypi.org/project/hmmCDR/0.1.4/)
+[![pypi](https://img.shields.io/pypi/v/hmmCDR)](https://pypi.org/project/hmmCDR/)
 
 `hmmCDR` is a set of python scripts to automate the prediction of hypomethylated Centromere Dip Regions (CDRs) within active alpha satellite HOR arrays. Utilizes an Hidden Markov Model to allow finer resolution of subCDR boundaries.
 
