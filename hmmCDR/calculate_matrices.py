@@ -339,18 +339,18 @@ class calculate_matrices:
 def main():
     argparser = argparse.ArgumentParser(description='Process bedMethyl and CenSat BED file to produce hmmCDR priors')
     
-    # Required arguments
+    # required inputs
     argparser.add_argument('bedmethyl', type=str, help='Path to the bedmethyl file')
     argparser.add_argument('censat', type=str, help='Path to the censat BED file')
     argparser.add_argument('output', type=str, help='Path to the output BED file')
     
-    # Parser Arguments
+    # bed_parser arguments
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
     argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
     argparser.add_argument('--bedgraph', action='store_true', default=False, help='Flag indicating if the input is a bedgraph. (default: False)')
     argparser.add_argument('--min_valid_cov', type=int, default=10, help='Minimum valid coverage to consider a methylation site(read from full modkit pileup files). (default: 10)')
     
-    # calculate_matrices Arguments
+    # calculate_matrices arguments
     argparser.add_argument('--window_size', type=int, default=1190, help='Window size to calculate prior regions. (default: 1190)')
     argparser.add_argument('--step_size', type=int, default=1190, help='Step size when calculation windows for priors. (default: 1190)')
     argparser.add_argument('--prior_threshold', type=float, default=30.0, help='Threshold for determining if a window is a CDR. Uses this percentile if --prior_use_percentile is passed (default: 30.0)')
@@ -358,7 +358,6 @@ def main():
     argparser.add_argument('--min_prior_size', type=int, default=8330, help='Minimum size for CDR regions. (default: 8330)')
     argparser.add_argument('--enrichment', action='store_true', default=False, help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
     argparser.add_argument('--output_label', type=str, default='subCDR', help='Label to use for name column of priorCDR BED file. (default: "subCDR")')
-
     argparser.add_argument('--percentile_emissions', action='store_true', default=False, help='Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: False)')
     argparser.add_argument('-w', type=float, default=0.0, help='Threshold of non-zero methylation percentile to be classified as None (default: 0.0)')
     argparser.add_argument('-x', type=float, default=33.3, help='Threshold of non-zero methylation percentile to be classified as low (default: 33.3)')
@@ -404,7 +403,7 @@ def main():
 
     combined_windowmean = pd.concat(windowmean_chrom_dict.values(), ignore_index=True)
     combined_windowmean = combined_windowmean.sort_values(by=combined_windowmean.columns[:2].tolist())
-    combined_windowmean.to_csv(f'{output_prefix}_windowmean.bed', sep='\t', index=False, header=False)
+    combined_windowmean.to_csv(f'{output_prefix}_windowmean.bedgraph', sep='\t', index=False, header=False)
 
     # Save matrices to a text file with key: numpy array representation
     with open(f'{output_prefix}_emission_matrices.txt', 'w') as f:
