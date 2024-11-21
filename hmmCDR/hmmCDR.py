@@ -2,13 +2,14 @@ import pandas as pd
 import numpy as np 
 import pybedtools
 import argparse
+import ast
 import os
 import concurrent.futures
 
 from hmmlearn import hmm
 
-from hmmCDR.parser import hmmCDR_parser
-from hmmCDR.find_priors import hmmCDR_prior_finder
+from hmmCDR.bed_parser import bed_parser
+from hmmCDR.calculate_matrices import calculate_matrices
 
 
 class hmmCDR:
@@ -194,24 +195,36 @@ class hmmCDR:
 
         return single_chrom_hmmCDR_output.sort_values(by='start'), single_chrom_hmmCDR_scores
     
-    def hmm_single_chromosome(self, chrom, bed4Methyl_chrom, priors_chrom):
-        labelled_bed4Methyl_chrom = self.assign_emissions(
-            self.assign_priors(bed4Methyl_chrom, priors_chrom), 
-            self.calculate_emission_thresholds(bed4Methyl_chrom)
-        )
+    def hmm_single_chromosome(self, chrom, bed4Methyl_chrom, priors_chrom, emission_matrix=None, transition_matrix=None):
+        if emission_matrix is None and transition_matrix is None:
+            labelled_bed4Methyl_chrom = self.assign_emissions(
+                self.assign_priors(bed4Methyl_chrom, priors_chrom), 
+                self.calculate_emission_thresholds(bed4Methyl_chrom)
+            )
 
-        emission_matrix = self.calculate_emission_matrix(labelled_bed4Methyl_chrom)
-        transition_matrix = self.calculate_transition_matrix(labelled_bed4Methyl_chrom)
+            emission_matrix = self.calculate_emission_matrix(labelled_bed4Methyl_chrom)
+            transition_matrix = self.calculate_transition_matrix(labelled_bed4Methyl_chrom)
 
         hmmlabelled_bed4Methyl = self.runHMM(labelled_bed4Methyl_chrom, transition_matrix, emission_matrix)
         single_chrom_hmmCDR_result, single_chrom_hmmCDR_scores = self.create_subCDR_df(hmmlabelled_bed4Methyl)
 
         return chrom, single_chrom_hmmCDR_result, single_chrom_hmmCDR_scores, emission_matrix, transition_matrix
 
-    def hmm_all_chromosomes(self, bed4Methyl_chrom_dict, priors_chrom_dict):
+    def hmm_all_chromosomes(self, bed4Methyl_chrom_dict, priors_chrom_dict=None, custom_emission_matrix=None, custom_transition_matrix=None):
+        # If no priors provided but custom matrices are, create dummy priors
+        if priors_chrom_dict is None:
+            priors_chrom_dict = {chrom: pd.DataFrame() for chrom in bed4Methyl_chrom_dict}
+
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {
-                executor.submit(self.hmm_single_chromosome, chrom, bed4Methyl_chrom_dict[chrom], priors_chrom_dict[chrom]): chrom 
+                executor.submit(
+                    self.hmm_single_chromosome, 
+                    chrom, 
+                    bed4Methyl_chrom_dict[chrom], 
+                    priors_chrom_dict[chrom], 
+                    custom_emission_matrix, 
+                    custom_transition_matrix
+                ): chrom 
                 for chrom in bed4Methyl_chrom_dict
             }
 
@@ -228,13 +241,13 @@ class hmmCDR:
 def main():
     argparser= argparse.ArgumentParser(description='Process input files with optional parameters.')
 
-    argparser.add_argument('bedMethyl_path', type=str, help='Path to the bedMethyl file')
-    argparser.add_argument('cenSat_path', type=str, help='Path to the CenSat BED file')
+    argparser.add_argument('bedmethyl_path', type=str, help='Path to the bedMethyl file')
+    argparser.add_argument('censat_path', type=str, help='Path to the CenSat BED file')
     argparser.add_argument('output_path', type=str, help='Output Path for the output files')
 
     # hmmCDR Parser Flags
     argparser.add_argument('-m', '--mod_code', type=str, default='m', help='Modification code to filter bedMethyl file (default: "m")')
-    argparser.add_argument('-s', '--sat_type', type=str, default='H1L', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
+    argparser.add_argument('-s', '--sat_type', type=str, default='active_hor', help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "H1L")')
     argparser.add_argument('--bedgraph', action='store_true', help='Flag indicating if the input is a bedgraph. (default: False)')
     argparser.add_argument('--min_valid_cov', type=int, default=15, help='Minimum Valid Coverage to consider a methylation site. (default: 15)')
 
@@ -242,6 +255,10 @@ def main():
     argparser.add_argument('--window_size', type=int, default=1190, help='Window size to calculate prior regions[~7 monomers]. (default: 1190)')
     argparser.add_argument('--prior_percentile', type=float, default=10, help='Percentile for finding  prior subCDR regions. (default: 10)')
     argparser.add_argument('--prior_min_size', type=int, default=8330, help='Minimum size of prior subCDR regions[7 windows]. (default: 3000)')
+
+    # Matrix input arguments
+    argparser.add_argument('--e_matrix', type=str, help='Custom Emission Matrix (Ex: [[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]])')
+    argparser.add_argument('--t_matrix', type=str, help='Custom Transition Matrix (Ex: [[0.9999,0.003],[0.0001,0.997]])')
 
     # HMM Flags
     argparser.add_argument('--hmm_percentile_emissions', action='store_true', default=False, help='Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: False)')
@@ -266,43 +283,67 @@ def main():
     argparser.add_argument('--output_label', type=str, default='CDR', help='Label to use for name column of hmmCDR BED file. Needs to match priorCDR label. (default: "subCDR")')
 
     args = argparser.parse_args()
+
+    # Validate matrix arguments
+    if bool(args.e_matrix) != bool(args.t_matrix):
+        raise ValueError("Both --e_matrix and --t_matrix must be provided together")
+
     output_prefix = os.path.splitext(args.output_path)[0]
     sat_types = [st.strip() for st in args.sat_type.split(',')]
 
-    CDRparser = hmmCDR_parser(
+    parseCDRBeds = bed_parser(
         mod_code=args.mod_code,
         sat_type=sat_types,
         bedgraph=args.bedgraph,
         min_valid_cov=args.min_valid_cov
     )
 
-    bed4Methyl_chrom_dict, cenSat_chrom_dict = CDRparser.process_files(
-        bedMethyl_path=args.bedMethyl_path, 
-        cenSat_path=args.cenSat_path
+    methylation_chrom_dict = parseCDRBeds.process_files(
+        bedmethyl_path=args.bedmethyl_path, 
+        censat_path=args.censat_path
     )
 
     if args.output_all:
-        concat_filtered_cenSat = pd.concat(cenSat_chrom_dict.values(), axis=0)
-        concat_filtered_cenSat.to_csv(f'{output_prefix}_{args.sat_type}_regions.bed', sep='\t', index=False, header=False)
-        concatenated_bed4Methyl = pd.concat(bed4Methyl_chrom_dict.values(), axis=0)
-        concatenated_bed4Methyl.to_csv(f'{output_prefix}_{args.sat_type}_methylation.bedgraph', sep='\t', index=False, header=False)
+        all_region_methylation = pd.concat(methylation_chrom_dict.values(), axis=0)
+        all_region_methylation = all_region_methylation.sort_values(by=[all_region_methylation.columns[0], 
+                                                                        all_region_methylation.columns[1]])
+        all_region_methylation.to_csv(f'{output_prefix}_{args.sat_type}_methylation.bedgraph', sep='\t', index=False, header=False)
     
-    CDRpriors = hmmCDR_prior_finder(
-        window_size=args.window_size, 
-        min_size=args.prior_min_size, 
-        prior_percentile=args.prior_percentile, 
-        enrichment=args.enrichment, 
-        output_label=args.output_label
-    )
+    # Skip prior finding if matrices are provided
+    if args.e_matrix and args.t_matrix:
+        # Parse emission matrix from string
+        try:
+            emission_matrix = ast.literal_eval(args.e_matrix)
+        except (ValueError, SyntaxError):
+            raise ValueError("Invalid emission matrix format. Use format like: '[[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]]'")
+        # Parse transition matrix from string
+        try:
+            transition_matrix = ast.literal_eval(args.t_matrix)
+        except (ValueError, SyntaxError):
+            raise ValueError("Invalid transition matrix format. Use format like: '[[0.9999,0.003],[0.0001,0.997]]'")
+        
+    else:
+        # Existing prior finding logic
+        CDRpriors = calculate_matrices(
+            window_size=args.window_size, 
+            min_size=args.prior_min_size, 
+            prior_percentile=args.prior_percentile, 
+            enrichment=args.enrichment, 
+            output_label=args.output_label
+        )
 
-    priors_chrom_dict, prior_windows_chrom_dict = CDRpriors.priors_all_chromosomes(bed4Methyl_chrom_dict=bed4Methyl_chrom_dict)
-    
-    if args.output_all:
-        concatenated_priors = pd.concat(priors_chrom_dict.values(), axis=0)
-        concatenated_priors.to_csv(f'{output_prefix}_priorCDR.bed', sep='\t', index=False, header=False)
+        priors_chrom_dict, prior_windows_chrom_dict = CDRpriors.priors_all_chromosomes(bed4Methyl_chrom_dict=methylation_chrom_dict)
+        
+        if args.output_all:
+            all_priors = pd.concat(priors_chrom_dict.values(), axis=0)
+            all_priors = all_priors.sort_values(by=[all_priors.columns[0], 
+                                                    all_priors.columns[1]])
+            all_priors.to_csv(f'{output_prefix}_priorCDR.bed', sep='\t', index=False, header=False)
 
-        concatenated_windows = pd.concat(prior_windows_chrom_dict.values(), axis=0)
-        concatenated_windows.to_csv(f'{output_prefix}_windowmeans.bedgraph', sep='\t', index=False, header=False)
+            all_prior_windows = pd.concat(prior_windows_chrom_dict.values(), axis=0)
+            all_prior_windows = all_prior_windows.sort_values(by=[all_prior_windows.columns[0], 
+                                                                  all_prior_windows.columns[1]])
+            all_prior_windows.to_csv(f'{output_prefix}.prior_window_means.bedgraph', sep='\t', index=False, header=False)
 
     CDRhmm = hmmCDR(
         hmm_percentile_emissions=args.hmm_percentile_emissions,
@@ -318,10 +359,17 @@ def main():
         output_label=args.output_label
     )
 
-    hmm_results_chrom_dict, hmm_scores_chrom_dict, emission_matrices, transition_matrices = CDRhmm.hmm_all_chromosomes(
-        bed4Methyl_chrom_dict=bed4Methyl_chrom_dict,
-        priors_chrom_dict=priors_chrom_dict
-    )
+    if args.e_matrix and args.t_matrix:
+        hmm_results_chrom_dict, hmm_scores_chrom_dict, _, _ = CDRhmm.hmm_all_chromosomes(
+            bed4Methyl_chrom_dict=methylation_chrom_dict,
+            custom_emission_matrix=emission_matrix,
+            custom_transition_matrix=transition_matrix
+        )
+    else:
+        hmm_results_chrom_dict, hmm_scores_chrom_dict, emission_matrices, transition_matrices = CDRhmm.hmm_all_chromosomes(
+            bed4Methyl_chrom_dict=methylation_chrom_dict,
+            priors_chrom_dict=priors_chrom_dict
+        )
 
     # output emission and transition matrices:
     if args.output_all:
@@ -345,9 +393,13 @@ def main():
 
     # output subCDRs and CDR scoring bedgraph
     concatenated_hmm_subCDRs = pd.concat(hmm_results_chrom_dict.values(), axis=0)
+    concatenated_hmm_subCDRs = concatenated_hmm_subCDRs.sort_values(by=[0, 1])
     concatenated_hmm_subCDRs.to_csv(f'{output_prefix}_sub{args.output_label}.bed', sep='\t', index=False, header=False)
-    concatenated_hmm_scores = pd.concat(hmm_scores_chrom_dict.values(), axis=0)
-    concatenated_hmm_scores.to_csv(f'{output_prefix}_scores.bedgraph', sep='\t', index=False, header=False)
+
+    if args.output_all:
+        concatenated_hmm_scores = pd.concat(hmm_scores_chrom_dict.values(), axis=0)
+        concatenated_hmm_scores = concatenated_hmm_scores.sort_values(by=[0, 1])
+        concatenated_hmm_scores.to_csv(f'{output_prefix}_scores.bedgraph', sep='\t', index=False, header=False)
 
     # create final CDR output that merges adjacent subCDRs and reports scoring of over 3
     concatenated_hmm_subCDRs_bedtools = pybedtools.BedTool.from_dataframe(concatenated_hmm_subCDRs[concatenated_hmm_subCDRs.iloc[:,3] == f"sub{args.output_label}"])
@@ -368,10 +420,11 @@ def main():
     concatenated_hmm_CDRs['itemRgb'] = np.where(
         concatenated_hmm_CDRs['name'] == f"{args.output_label}", args.main_color, 
         np.where(concatenated_hmm_CDRs['name'] == f'low_conf_{args.output_label}', args.low_conf_color, ''))
-
+    
+    # Sort the final output
+    concatenated_hmm_CDRs = concatenated_hmm_CDRs.sort_values(by=['chrom', 'start'])
     concatenated_hmm_CDRs.to_csv(args.output_path, sep='\t', index=False, header=False)
 
 
 if __name__ == "__main__":
     main()
-    
