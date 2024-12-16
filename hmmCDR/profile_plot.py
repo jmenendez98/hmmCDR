@@ -168,7 +168,7 @@ def main():
     argparser.add_argument('censat', type=str, help='Path to the bedMethyl file')
     argparser.add_argument('output', type=str, help='Path (with desired extension) of output file')
     argparser.add_argument('-b', '--beds', type=str, default='', help='Paths to the BED files (comma separated).')
-    argparser.add_argument('-g', '--bedgraphs', type=str, default='', help='Paths to the BEDGRAPH files (comma separated).')
+    argparser.add_argument('-g', '--bedgraphs', type=str, default='', help='Paths to the BEDGRAPH files (comma separated). [WIP]')
 
     args = argparser.parse_args()
 
