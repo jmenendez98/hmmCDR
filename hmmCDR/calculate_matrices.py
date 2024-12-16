@@ -26,7 +26,7 @@ class calculate_matrices:
         self.MAX_RETRIES = 10
         
 
-    def create_chrom_windows(self, methylation_bedtool, gap_threshold=10000):
+    def create_chrom_windows(self, regions_bedtool, gap_threshold=10000):
         """
         Create fixed-size windows across chromosomes, separating windows in regions with large gaps.
 
@@ -39,10 +39,10 @@ class calculate_matrices:
         """
 
         # Merge intervals that are closer than the gap threshold
-        merged_bedtool = methylation_bedtool.merge(d=gap_threshold)
+        merged_regions_bedtool = regions_bedtool.merge(d=gap_threshold)
 
         # Generate fixed-size windows from the merged intervals
-        windows_bedtool = merged_bedtool.window_maker(b=merged_bedtool, w=self.window_size, s=self.step_size)
+        windows_bedtool = merged_regions_bedtool.window_maker(b=merged_regions_bedtool, w=self.window_size, s=self.step_size)
 
         return windows_bedtool
 
@@ -57,7 +57,6 @@ class calculate_matrices:
         Returns:
             pybedtools.BedTool: BedTool object containing fixed-size windows with methylation as the fourth column.
         """
-        # Find 
         windows_means_bedtool = windows_bedtool.map(methylation_bedtool, c=4, o='mean')
         return windows_means_bedtool
 
@@ -112,11 +111,11 @@ class calculate_matrices:
         merged_windows_bedtool = filtered_windows_bedtool.merge()
 
         # Filter by minimum size using pybedtools filter
-        final_windows_bedtool = merged_windows_bedtool.filter(
+        cdr_priors_bedtool = merged_windows_bedtool.filter(
             lambda x: int(x.end) - int(x.start) >= self.min_prior_size
         )
 
-        return final_windows_bedtool
+        return cdr_priors_bedtool
     
     def assign_priors(self, methylation_bedtool, cdr_prior_bedtool):
         """
@@ -257,7 +256,7 @@ class calculate_matrices:
 
         return transition_matrix
 
-    def priors_single_chromosome(self, chrom, methylation_per_chrom, prior_percentile, prior_threshold):
+    def priors_single_chromosome(self, chrom, methylation_per_chrom, regions_per_chrom, prior_percentile, prior_threshold):
         """
         Find prior CDRs for a single chromosome with adaptive thresholding.
 
@@ -271,7 +270,9 @@ class calculate_matrices:
             tuple: Chromosome name, prior CDRs DataFrame, window mean BedTool
         """
         methylation_bedtool = pybedtools.BedTool.from_dataframe(methylation_per_chrom) # Convert the input dataFrame to a bedTool object
-        window_bedtool = self.create_chrom_windows(methylation_bedtool) # Create windows
+        regions_bedtool = pybedtools.BedTool.from_dataframe(regions_per_chrom) # Convert the input dataFrame to a bedTool object
+
+        window_bedtool = self.create_chrom_windows(regions_bedtool) # Create windows
         window_mean_bedtool = self.mean_within_windows(methylation_bedtool, window_bedtool) # Find mean within windows
 
         # Determine current CDR threshold
@@ -292,7 +293,7 @@ class calculate_matrices:
             emission_matrix = np.array([[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]])
             transition_matrix = np.array([[0.9999,0.003],[0.0001,0.997]])
 
-            return chrom, cdr_prior_df, cdr_prior_bedtool, emission_matrix, transition_matrix
+            return chrom, pd.DataFrame(),  pd.DataFrame(), emission_matrix, transition_matrix
 
         # add priors on to methylation bedtool
         methylation_w_priors_df = self.assign_priors(methylation_bedtool, pybedtools.BedTool.from_dataframe(cdr_prior_df))
@@ -300,15 +301,13 @@ class calculate_matrices:
         # assign emissions to methylation bedtool
         methylation_w_emission_priors_df = self.assign_emissions(methylation_w_priors_df, self.calculate_emission_thresholds(methylation_w_priors_df))
 
-        methylation_w_emission_priors_df.to_csv('methylation_w_emission_priors.tsv',sep='\t',index=None)
-
         # calculate emission and transition matrices with assigned priors
         emission_matrix = self.calculate_emission_matrix(methylation_w_emission_priors_df)
         transition_matrix = self.calculate_transition_matrix(methylation_w_priors_df)
 
         return chrom, cdr_prior_df, window_mean_bedtool.saveas().to_dataframe(), methylation_w_emission_priors_df, emission_matrix, transition_matrix
 
-    def priors_all_chromosomes(self, methylation_chrom_dict, prior_percentile, prior_threshold):
+    def priors_all_chromosomes(self, methylation_chrom_dict, regions_chrom_dict, prior_percentile, prior_threshold):
         priors_chrom_dict = {}
         windowmean_chrom_dict = {}
         labelled_methylation_chrom_dict = {}
@@ -322,6 +321,7 @@ class calculate_matrices:
                     self.priors_single_chromosome, 
                     chrom,
                     methylation_chrom_dict[chrom], 
+                    regions_chrom_dict[chrom],
                     prior_percentile, 
                     prior_threshold
                 ): chrom for chrom in chromosomes
@@ -356,7 +356,7 @@ def main():
     # calculate_matrices arguments
     argparser.add_argument('--window_size', type=int, default=1190, help='Window size to calculate prior regions. (default: 1190)')
     argparser.add_argument('--step_size', type=int, default=1190, help='Step size when calculation windows for priors. (default: 1190)')
-    argparser.add_argument('--prior_threshold', type=float, default=30.0, help='Threshold for determining if a window is a CDR. Uses this percentile if --prior_use_percentile is passed (default: 30.0)')
+    argparser.add_argument('--prior_threshold', type=float, default=20.0, help='Threshold for determining if a window is a CDR. Uses value as a percentile of all windows if --prior_use_percentile is passed (default: 30.0)')
     argparser.add_argument('--prior_use_percentile', action='store_true', default=False, help='Whether or not to use percentile when calculating windowing priors. (default: False)')
     argparser.add_argument('--min_prior_size', type=int, default=8330, help='Minimum size for CDR regions. (default: 8330)')
     argparser.add_argument('--enrichment', action='store_true', default=False, help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
@@ -365,7 +365,7 @@ def main():
     argparser.add_argument('-w', type=float, default=0.0, help='Threshold of non-zero methylation percentile to be classified as None (default: 0.0)')
     argparser.add_argument('-x', type=float, default=33.3, help='Threshold of non-zero methylation percentile to be classified as low (default: 33.3)')
     argparser.add_argument('-y', type=float, default=66.6, help='Threshold of non-zero methylation percentile to be classified as medium (default: 66.6)')
-    argparser.add_argument('-z', type=float, default=100.0, help='Threshold of non-zero methylation percentile to be classified as high (default: 100.0)')
+    argparser.add_argument('-z', type=float, default=90.0, help='Threshold of non-zero methylation percentile to be classified as high (default: 100.0)')
 
     args = argparser.parse_args()
     sat_types = [st.strip() for st in args.sat_type.split(',')]
@@ -379,9 +379,9 @@ def main():
         pre_subset_censat=args.pre_subset_censat
     )
 
-    methylation_chrom_dict = parseCDRBeds.process_files(
+    methylation_chrom_dict, regions_chrom_dict = parseCDRBeds.process_files(
         bedmethyl_path = args.bedmethyl, 
-        censat_path = args.censat
+        censat_path = args.censat,
     )
 
     priors = calculate_matrices(
@@ -396,6 +396,7 @@ def main():
 
     priors_chrom_dict, windowmean_chrom_dict, labelled_methylation_chrom_dict, emission_matrix_chrom_dict, transition_matrix_chrom_dict = priors.priors_all_chromosomes(
         methylation_chrom_dict = methylation_chrom_dict, 
+        regions_chrom_dict = regions_chrom_dict,
         prior_percentile = args.prior_use_percentile, 
         prior_threshold = args.prior_threshold
     )

@@ -64,20 +64,22 @@ class bed_parser:
                         return feature
                     except (IndexError, ValueError):
                         return False
+                    
                 bedtool = bedtool.filter(bedgraph_filter)
 
             else:
-                # Original BedMethyl filtering logic
                 def bedmethyl_filter(feature):
                     try:
-                        # Check filtering conditions
-                        return (
-                            feature[3] == self.mod_code
-                            and float(feature[4]) >= self.min_valid_cov
-                        )
+                        if (feature[3] == self.mod_code and 
+                            float(feature[4]) >= self.min_valid_cov):
+                            # Assuming 4 columns, last column is methylation value
+                            return feature
                     except (IndexError, ValueError):
                         return False
-                bedtool = bedtool.filter(bedmethyl_filter)
+
+                    return False  # Explicitly return False for features not meeting criteria
+                
+                bedtool = bedtool.filter(bedmethyl_filter).cut([0,1,2,10])
 
         elif file_type == 'censat':
             if self.pre_subset_censat:
@@ -92,32 +94,9 @@ class bed_parser:
                         return False
                 bedtool = bedtool.filter(censat_filter)
         
-        return bedtool
-    
-    def intersect_files(self, bedmethyl_path, censat_path):
-        """
-        Perform intersection between BedMethyl and CenSat files
-        
-        Args:
-            bedmethyl_path (str): Path to BedMethyl file
-            censat_path (str): Path to CenSat file
-        
-        Returns:
-            pybedtools.BedTool: Intersected genomic intervals
-            pybedtools.BedTool: CenSat intervals used for intersection
-        """
-        # Read and filter files
-        bedmethyl_tool = self.read_and_filter_bedfile(bedmethyl_path, 'bedmethyl')
-        censat_tool = self.read_and_filter_bedfile(censat_path, 'censat')
+        return bedtool.saveas()
 
-        # Perform intersection
-        # -u: Report original A entry once if overlaps with any B
-        # -wa: Write original A entry
-        intersected = bedmethyl_tool.intersect(censat_tool, u=True, wa=True)
-
-        return intersected
-
-    def group_by_chromosome(self, methylation_bedtool):
+    def bedtool_to_chrom_dict(self, bedtool):
         """
         Group intersected intervals by chromosome
         
@@ -128,17 +107,10 @@ class bed_parser:
             dict: Chromosome-wise dictionary of methylation data
         """
         # Convert to DataFrame for easier manipulation
-        if self.bedgraph:
-            methyl_df = methylation_bedtool.to_dataframe(names=np.arange(0,4,1))
-        else:
-            methyl_df = methylation_bedtool.to_dataframe(names=np.arange(0,18,1))
-            methyl_df = methyl_df.iloc[:, [0, 1, 2, 10]]
-
-        if methyl_df.empty:
-            raise ValueError("The intersection resulted in an empty DataFrame.")
+        df = bedtool.to_dataframe()
 
         # Group by chromosome
-        return {chrom: group for chrom, group in methyl_df.groupby(methyl_df.columns[0])}
+        return {chrom: group for chrom, group in df.groupby(df.columns[0])}
     
     def process_files(self, bedmethyl_path, censat_path):
         """
@@ -151,7 +123,12 @@ class bed_parser:
         Returns:
             dict: Chromosome-wise dictionary of methylation data
         """
-        # Intersect files
-        methylation_bedtool = self.intersect_files(bedmethyl_path, censat_path)
+        # Read and filter files
+        bedmethyl_bedtool = self.read_and_filter_bedfile(bedmethyl_path, 'bedmethyl')
+        censat_bedtool = self.read_and_filter_bedfile(censat_path, 'censat')
 
-        return self.group_by_chromosome(methylation_bedtool)
+        # Perform intersection
+        # -wa: Write original A entry
+        intersected_bedmethyl_bedtool = bedmethyl_bedtool.intersect(censat_bedtool, wa=True)
+
+        return self.bedtool_to_chrom_dict(intersected_bedmethyl_bedtool), self.bedtool_to_chrom_dict(censat_bedtool)

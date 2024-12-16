@@ -200,7 +200,7 @@ def parse_command_line_arguments():
     # calculate_matrices arguments
     argparser.add_argument('--window_size', type=int, default=1190, help='Window size to calculate prior regions. (default: 1190)')
     argparser.add_argument('--step_size', type=int, default=1190, help='Step size when calculation windows for priors. (default: 1190)')
-    argparser.add_argument('--prior_threshold', type=float, default=30.0, help='Threshold for determining if a window is a CDR. Uses this percentile if --prior_use_percentile is passed (default: 30.0)')
+    argparser.add_argument('--prior_threshold', type=float, default=20.0, help='Threshold for determining if a window is a CDR. Uses this percentile if --prior_use_percentile is passed (default: 30.0)')
     argparser.add_argument('--prior_use_percentile', action='store_true', default=False, help='Whether or not to use percentile when calculating windowing priors. (default: False)')
     argparser.add_argument('--min_prior_size', type=int, default=8330, help='Minimum size for CDR regions. (default: 8330)')
     argparser.add_argument('--enrichment', action='store_true', default=False, help='Enrichment flag. Pass in if you are looking for methylation enriched regions. (default: False)')
@@ -208,11 +208,11 @@ def parse_command_line_arguments():
     argparser.add_argument('-w', type=float, default=0.0, help='Threshold of non-zero methylation percentile to be classified as None (default: 0.0)')
     argparser.add_argument('-x', type=float, default=33.3, help='Threshold of non-zero methylation percentile to be classified as low (default: 33.3)')
     argparser.add_argument('-y', type=float, default=66.6, help='Threshold of non-zero methylation percentile to be classified as medium (default: 66.6)')
-    argparser.add_argument('-z', type=float, default=100.0, help='Threshold of non-zero methylation percentile to be classified as high (default: 100.0)')
+    argparser.add_argument('-z', type=float, default=90.0, help='Threshold of non-zero methylation percentile to be classified as high (default: 100.0)')
 
     # custom matrix input arguments
-    argparser.add_argument('--e_matrix', type=str, help='Custom Emission Matrix (Ex: [[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]])')
-    argparser.add_argument('--t_matrix', type=str, help='Custom Transition Matrix (Ex: [[0.9999,0.003],[0.0001,0.997]])')
+    argparser.add_argument('--e_matrix', type=str, help="Custom Emission Matrix (Example: [[0.008,0.40,0.412,0.18],[0.025,0.9225,0.05,0.0025]]', 'chr1:[[0.008,0.40,0.412,0.18],[0.025,0.9225,0.05,0.0025]]...' or path to a file containing the matrix")
+    argparser.add_argument('--t_matrix', type=str, help="Custom Transition Matrix (Example: '[[0.9999, 0.0001], [0.0025, 0.9975]]', 'chr1:[[0.9999, 0.0001], [0.0025, 0.9975]]...' or path to a file containing the matrix")
 
     # HMM Flags
     argparser.add_argument('--n_iter', type=int, default=1, help='Maximum number of iteration allowed for the HMM. (default: 1)')
@@ -252,7 +252,7 @@ def main():
         pre_subset_censat=args.pre_subset_censat
     )
 
-    methylation_chrom_dict = parseCDRBeds.process_files(
+    methylation_chrom_dict, regions_chrom_dict = parseCDRBeds.process_files(
         bedmethyl_path=args.bedmethyl, 
         censat_path=args.censat
     )
@@ -335,6 +335,7 @@ def main():
     else:
         priors_chrom_dict, windowmean_chrom_dict, labelled_methylation_chrom_dict, emission_matrix_chrom_dict, transition_matrix_chrom_dict = priors.priors_all_chromosomes(
             methylation_chrom_dict = methylation_chrom_dict, 
+            regions_chrom_dict = regions_chrom_dict,
             prior_percentile = args.prior_use_percentile, 
             prior_threshold = args.prior_threshold
         )

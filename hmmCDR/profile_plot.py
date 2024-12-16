@@ -2,272 +2,190 @@ import argparse
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import numpy as np
 import re
 import pybedtools
-
 
 def get_file_name(path):
     """Helper function to extract file name with extension."""
     return os.path.basename(path)
 
 def parse_files(paths):
+    """Parse multiple file paths into DataFrames."""
     paths_list = paths.split(',')
-    column_names = ['chrom', 'start', 'end', 'name', 'score', 'strand', 'thickStart', 'thickEnd', 'itemRgb', 'blockCounts', 'blockSizes', 'blockStarts']
-    parsed_files = {}
-    for path in paths_list:
-        data = pd.read_csv(path, sep='\t', header=None)
-        n_cols = data.shape[1]
-        data.columns = column_names[:n_cols]
-        parsed_files[get_file_name(path)] = data
-    return parsed_files
+    return {get_file_name(path): pybedtools.BedTool(path) for path in paths_list if path}
 
-def find_center(cenSat, sat_names='H1L,mon'):
-    if sat_names is None:
-        sat_names = []
-    elif isinstance(sat_names, str):
+def find_center(censat_bedtool, sat_names='active_hor'):
+    """Find chromosome centers using BedTool operations."""
+    # Convert to dataframe only once for the groupby operation
+    censat = censat_bedtool.to_dataframe()
+    
+    # Handle sat_names as either string or list
+    if isinstance(sat_names, str):
         sat_names = [name.strip() for name in sat_names.split(',')]
-    mask = cenSat['name'].str.contains('|'.join(sat_names), na=False)
-    cenSat_subset = cenSat[mask]
-    subset_starts = cenSat_subset.groupby('chrom')['start'].min()
-    subset_ends = cenSat_subset.groupby('chrom')['end'].max()
+    
+    # Use proper pandas string method and column name
+    # BedTool columns are named 'name' for the 4th column, not 3
+    mask = censat['name'].str.contains('|'.join(sat_names), na=False)
+    censat = censat[mask]
+
+    subset_starts = censat.groupby('chrom')['start'].min()
+    subset_ends = censat.groupby('chrom')['end'].max()
     subset_half_lengths = ((subset_ends - subset_starts) // 2)
-    subset_middles = subset_starts + subset_half_lengths
-    return subset_middles, subset_half_lengths
+    return subset_starts + subset_half_lengths, subset_half_lengths
 
 def normalize_to_center(bed, centers):
-    if 'start' not in bed.columns or 'end' not in bed.columns:
-        raise KeyError("'start' or 'end' column not found in the bed DataFrame.")
-    bed.loc[:,'normalized_start'] = bed['start'] - bed['chrom'].map(centers).fillna(0)
-    bed.loc[:,'normalized_end'] = bed['end'] - bed['chrom'].map(centers).fillna(0)
+    """Normalize bed coordinates relative to chromosome centers."""
+    bed = bed.copy()
+    bed['normalized_start'] = bed['start'] - bed['chrom'].map(centers).fillna(0)
+    bed['normalized_end'] = bed['end'] - bed['chrom'].map(centers).fillna(0)
     return bed
 
-def sep_haplotype(data, hap1_str, hap2_str):
-    return data[data['chrom'].str.contains(hap1_str)], data[data['chrom'].str.contains(hap2_str)]
-
 def create_range_bed(centers, half_size):
-    """Create a BED file from the centers Series with chromosome, start, and end coordinates."""
+    """Create a BED file from chromosome centers."""
     bed_df = pd.DataFrame({
         'chrom': centers.index,                 
         'start': centers - half_size,            
         'end': centers + half_size                
     }).astype({'start': 'int', 'end': 'int'})  
-    bedtool = pybedtools.BedTool.from_dataframe(bed_df)
-    return bedtool
+    return pybedtools.BedTool.from_dataframe(bed_df)
 
-def intersect_with_range(df, range_bedtool):
-    """Intersect all dataframes in the files dictionary with range_bedtool."""
-    bedtool = pybedtools.BedTool.from_dataframe(df)
-    intersected_bedtool = bedtool.intersect(range_bedtool)
-    intersected_df = intersected_bedtool.to_dataframe()
-    return intersected_df
-
-def smooth_bedgraph(bedgraph_df, window_size=10000):
-    bedgraph_df.loc[:, 'name'] = pd.to_numeric(bedgraph_df['name'], errors='coerce')
-    bedgraph_bt = pybedtools.BedTool.from_dataframe(bedgraph_df[['chrom', 'start', 'end', 'name']])
+def cen_profile_plot(files, output_file, censat_name, centers_dict, x_min, x_max, no_track_labels=False):
+    """
+    Create summary centromeric profile plot across genome.
     
-    smoothed_dfs = []
-    for chrom, group in bedgraph_df.groupby('chrom'):
-        range_start = group['start'].min()
-        range_end = group['end'].max()
-
-        windows_list = []
-        for start in range(range_start, range_end, window_size):
-            end = min(start + window_size, range_end)
-            windows_list.append([chrom, start, end])
-        windows_bt = pybedtools.BedTool(windows_list)
-        
-        mapped = windows_bt.map(bedgraph_bt, c=4, o='mean')
-        mapped_df = mapped.to_dataframe(names=['chrom', 'start', 'end', 'name'])
-        mapped_df['name'] = mapped_df['name'].replace('.', np.nan).fillna(0)
-        smoothed_dfs.append(mapped_df)
+    Parameters:
+    -----------
+    files : list
+        List of input files
+    censat_name : str
+        Name of the centromere satellite file
+    x_min : float
+        Minimum x-axis value
+    x_max : float
+        Maximum x-axis value
+    no_track_labels : bool, optional
+        Whether to show track labels (default: False)
+    """
     
-    if smoothed_dfs:
-        return pd.concat(smoothed_dfs).reset_index(drop=True)
-    else:
-        return pd.DataFrame(columns=['chrom', 'start', 'end', 'name'])
-
-def cenprofileplot(hap_dict, num_features, cenSat_name, 
-                   x_min, x_max, hap1_name, hap2_name,
-                   output_path, no_track_labels, bedgraphs):
-    haplotypes = [hap1_name, hap2_name] if hap2_name else [hap1_name]
-    num_haplotypes = len(haplotypes)
-    num_chroms = max([len(hap_dict[haplotype][cenSat_name]['chrom'].unique()) for haplotype in haplotypes])
-
-    fig, axes = plt.subplots(1, num_haplotypes, figsize=(40, num_chroms*0.5*num_features))
-
-    if num_haplotypes == 1:
-        axes = [axes]
+    plt.figure(figsize=(12,24))
 
     def get_chrom_num(chrom):
-        match = re.match(r'chr(\d+|X|Y)_(MATERNAL|PATERNAL)', chrom)
+        """Extract chromosome number for sorting."""
+        match = re.match(r'chr(\d+|X|Y)(_MATERNAL|_PATERNAL)?', chrom)
         if match:
             chrom_num = match.group(1)
             if chrom_num.isdigit():
                 return int(chrom_num)
-            elif chrom_num in ['X', 'Y']:
+            elif chrom_num == 'X':
                 return 23
+            elif chrom_num == 'Y':
+                return 24
         return float('inf')
 
-    def plot_bars_and_lines(ax, bed_dictionary, num_features, y_pos_dict):
-        index = -1
-        for key, bed_data in bed_dictionary.items():
-            unique_chroms = sorted(bed_data['chrom'].unique(), key=get_chrom_num)
-            index += 1 
+    all_chromosomes = sorted(
+        set(sorted(chrom for file in files.values() for chrom in file.to_dataframe()['chrom'].unique())),
+        key=get_chrom_num
+    )
 
-            for chrom in unique_chroms:
-                data = bed_data[bed_data['chrom'] == chrom]
-                y_pos = y_pos_dict[chrom]
+    plt.xlim(x_min, x_max)
+    plt.ylim(0, len(all_chromosomes)*len(files)+1)
+    ax = plt.gca()    
+
+    def parse_rgb_color(rgb_str):
+        """Convert RGB string to color tuple."""
+        try:
+            # Handle both comma-separated and space-separated RGB values
+            rgb = [int(x)/255.0 for x in rgb_str.replace(',', ' ').split()]
+            return tuple(rgb[:3] + [0.7])  # Add alpha for consistency
+        except (ValueError, IndexError):
+            return None
+
+    def plot_bed(file, file_name, chrom_order, centers_dict, offset, no_track_label=no_track_labels):
+        """
+        Plot genomic data tracks from multiple BED files.
+        
+        Parameters:
+        -----------
+        file : pybedtools BedTool
+            BED file data
+        chrom_order : list
+            Sorted list of chromosomes
+        no_track_label : bool, optional
+            Whether to show track labels
+        """
+        data = file.to_dataframe()
+
+        for chrom in chrom_order:
+            # Find the index of the chromosome to determine y-coordinate
+            # Subtract from len(chrom_order) to have chr1 at the top
+            y = ( len(chrom_order) - chrom_order.index(chrom) ) * len(files) - len(files)+1 + offset
+
+            if not no_track_label:
+                plt.text(x_min, y, file_name, va='bottom', ha='left', size=4)
+            
+            # Filter data for this specific chromosome
+            chrom_data = data[data['chrom'] == chrom]
+            
+            # Get the centromere position for this chromosome
+            center = centers_dict[chrom]
+
+            for i, row in chrom_data.iterrows():
+                start = int(row.iloc[1]) - int(center)
+                length = int(row.iloc[2]) - int(row.iloc[1])
+                try:
+                    color = parse_rgb_color(row.iloc[8])
+                except IndexError:
+                    color = 'black'
                 
-                starts = data['normalized_start'].values
-                ends = data['normalized_end'].values
-                widths = ends - starts 
+                rect = patches.Rectangle((start, y), length, 0.5, color=color)
+                ax.add_patch(rect)
 
-                if key not in bedgraphs:
-                    if 'itemRgb' in data.columns:
-                        colors = data['itemRgb'].apply(lambda x: tuple([int(c) / 255 for c in x.split(',')]) )
-                    else:
-                        colors = 'grey'
-                    if key == cenSat_name:
-                        bar_heights = 0.9
-                        offset = 0
-                    else: 
-                        bar_heights = 0.35
-                        offset = (index*0.4)+0.4 
-                    ax.barh(
-                        y_pos * num_features + offset,  
-                        widths,
-                        left=starts,
-                        height=bar_heights,
-                        color=colors
-                    )
-                else:
-                    height_factors = (data['name'].astype(float).values / 100)
-                    if key == cenSat_name:
-                        bar_heights = height_factors * 0.9
-                        offset = 0
-                    else: 
-                        bar_heights = height_factors * 0.35
-                        offset = (index*0.4)+0.4 
-                    ax.barh(
-                        y_pos * num_features + offset, 
-                        widths,
-                        left=starts,
-                        height=bar_heights,
-                        color='grey',
-                        align='edge'
-                    )
+    offset=0
+    for file in files:
+        plot_bed(files[file], file, all_chromosomes, centers_dict, offset)
+        offset += 1
 
-                if not no_track_labels:
-                    ax.text(
-                        x_min + 0.001 * (x_max - x_min), 
-                        y_pos * num_features + offset,
-                        key, 
-                        va='center',
-                        ha='left',   
-                        fontsize=10, 
-                        fontweight=1000,
-                        color='black'
-                    )
+    # Create y-tick labels for chromosomes
+    y_ticks = []
+    y_tick_labels = []
+    for i, chrom in enumerate(all_chromosomes):
+        # Calculate y position for each chromosome
+        y_pos = (len(all_chromosomes) - i) * len(files) - len(files)//2
+        y_ticks.append(y_pos)
+        y_tick_labels.append(chrom)
 
-    for ax, haplotype in zip(axes, haplotypes):
-        hap_cenSat = hap_dict[haplotype][cenSat_name]
-        hap_chrom_labels = sorted(hap_cenSat['chrom'].unique(), key=get_chrom_num)[::-1]
-        y_pos_dict = {chrom: i for i, chrom in enumerate(hap_chrom_labels)}
+    plt.yticks(y_ticks, y_tick_labels, fontsize=8)
 
-        plot_bars_and_lines(ax, hap_dict[haplotype], num_features, y_pos_dict)
-
-        ax.set_yticks([i * num_features + num_features / 4 for i in range(len(hap_chrom_labels))])
-        ax.set_yticklabels(hap_chrom_labels, fontsize=14)
-
-        ax.set_ylim(-0.5, len(hap_chrom_labels) * num_features - 0.5)
-        ax.set_xlim(x_min, x_max)
-        ax.xaxis.set_ticks([])
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=200)
+    plt.savefig(output_file, dpi=1200)
 
 
 def main():
+    # argparse files in...
+    argparser= argparse.ArgumentParser(description='Process input files with optional parameters.')
 
-    def parse_arguments():
-        parser = argparse.ArgumentParser(description="Process genomic data.")
+    argparser.add_argument('censat', type=str, help='Path to the bedMethyl file')
+    argparser.add_argument('output', type=str, help='Path (with desired extension) of output file')
+    argparser.add_argument('-b', '--beds', type=str, default='', help='Paths to the BED files (comma separated).')
+    argparser.add_argument('-g', '--bedgraphs', type=str, default='', help='Paths to the BEDGRAPH files (comma separated).')
 
-        parser.add_argument('cenSat_path', type=str,
-                            help='Path to the cenSat file.')
-        parser.add_argument('output_path', type=str, 
-                            help='Path to the bedgraph file.')
-        
-        parser.add_argument('--bed_paths', type=str, default='',
-                            help='Comma-separated list of paths to the bed files.')
-        parser.add_argument('--bedgraph_paths', type=str, default='',
-                            help='Path to the bedgraph file.')
-        parser.add_argument('--hap1_name', type=str, default='MATERNAL',
-                            help='Name of the first haplotype.')
-        parser.add_argument('--hap2_name', type=str, default='PATERNAL',
-                            help='Name of the second haplotype.')
-        parser.add_argument('--haploid', action='store_true', default=False,
-                            help='Set to True if the data is diploid.')
-        parser.add_argument('--no_track_labels', action='store_true', default=False,
-                    help='Set to True if the data is diploid.')
+    args = argparser.parse_args()
 
-        return parser.parse_args()
+    censat_name = get_file_name(args.censat)
+    bedgraph_names = get_file_name(args.bedgraphs)
 
-    args = parse_arguments()
-
-    cenSat_path = args.cenSat_path
-    bed_paths = args.bed_paths
-    bedgraph_paths = args.bedgraph_paths
-    output_path = args.output_path
-    hap1_name = args.hap1_name
-    hap2_name = args.hap2_name
-    diploid = not args.haploid
-    no_track_labels = args.no_track_labels
-
-    cenSat_name = get_file_name(cenSat_path)
-
-    paths = ','.join([cenSat_path, bed_paths, bedgraph_paths])
-
+    paths = ','.join([args.censat, args.beds, args.bedgraphs])
     files = parse_files(paths)
 
-    centers, half = find_center(files[cenSat_name], sat_names='H1L')
+    centers, half = find_center(files[censat_name], sat_names='H1L')
     x_min, x_max = -(half.max()*1.1), (half.max()*1.1)
 
     range_bedtool = create_range_bed(centers, half_size=(half.max()*1.1) )
+    files = {file: files[file].intersect(range_bedtool, wa=True) for file in files}
 
-    files = {file: intersect_with_range(files[file], range_bedtool) for file in files}
+    cen_profile_plot(files=files, output_file=args.output, censat_name=censat_name, centers_dict=centers, x_min=x_min, x_max=x_max)
 
-    if diploid:
-        hap_dict = { hap1_name: {}, hap2_name: {} }
-
-        for file_name in files.keys():
-            hap1_file, hap2_file = sep_haplotype(files[file_name], hap1_name, hap2_name)
-            if not file_name.endswith('.bedgraph'):
-                hap_dict[hap1_name][file_name], hap_dict[hap2_name][file_name] = hap1_file, hap2_file
-            else:
-                hap_dict[hap1_name][file_name] = smooth_bedgraph(hap1_file, window_size=2500) 
-                hap_dict[hap2_name][file_name] = smooth_bedgraph(hap2_file, window_size=2500) 
-                
-    else:
-        hap1_name = 'haploid'
-        hap_dict = { hap1_name: {} }
-
-        for file_name in files.keys():
-            if file_name.endswith('.bedgraph'):
-                hap_dict[hap1_name][file_name] = files[file_name]
-            else:
-                hap_dict[hap1_name][file_name] = smooth_bedgraph(files[file_name], window_size=2500) 
-
-    for haplotype in hap_dict.keys():
-        for bed in hap_dict[haplotype].keys():
-            hap_dict[haplotype][bed] = normalize_to_center(hap_dict[haplotype][bed], centers=centers)
-
-    cenprofileplot(hap_dict=hap_dict, num_features=len(files.keys()), 
-               cenSat_name=cenSat_name, hap1_name=hap1_name, hap2_name=hap2_name,
-               x_min=x_min, x_max=x_max,
-               output_path=output_path, no_track_labels=no_track_labels, 
-               bedgraphs=bedgraph_paths)
-    
 
 if __name__ == "__main__":
     main()
