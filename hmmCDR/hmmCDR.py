@@ -158,7 +158,7 @@ class hmmCDR:
 
         return combined_CDRs, hmmCDR_scores
     
-    def hmm_single_chromosome(self, chrom, labelled_methylation_data, emission_matrix=None, transition_matrix=None):
+    def hmm_single_chromosome(self, chrom, labelled_methylation_data, emission_matrix, transition_matrix):
         hmmlabelled_bed4Methyl = self.runHMM(labelled_methylation_data, transition_matrix, emission_matrix)
         hmmCDR_result, hmmCDR_scores = self.create_subCDR_df(hmmlabelled_bed4Methyl)
         return chrom, hmmCDR_result, hmmCDR_scores, emission_matrix, transition_matrix
