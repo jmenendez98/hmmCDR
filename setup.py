@@ -33,4 +33,14 @@ setup(
         'Operating System :: OS Independent',
     ],
     python_requires='>=3.7',
+    extras_require={
+        'dev': [
+            'pytest',
+            'pytest-cov',
+            'black',
+            'isort',
+            'flake8',
+            'mypy',
+        ]
+    }
 )
