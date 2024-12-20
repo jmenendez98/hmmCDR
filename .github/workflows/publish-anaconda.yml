@@ -1,0 +1,39 @@
+name: Publish to Anaconda Cloud
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install conda-build
+        run: |
+          # Install conda
+          wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
+          bash miniconda.sh -b -p $HOME/miniconda
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda config --set always_yes yes --set changeps1 no
+          
+          # Install build tools
+          conda install conda-build anaconda-client
+
+      - name: Build conda package
+        run: |
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          conda build . -c conda-forge -c bioconda
+
+      - name: Upload to Anaconda Cloud
+        env:
+          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
+        run: |
+          source "$HOME/miniconda/etc/profile.d/conda.sh"
+          anaconda --token $ANACONDA_TOKEN upload $HOME/miniconda/conda-bld/noarch/*.tar.bz2 --force
