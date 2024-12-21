@@ -144,18 +144,22 @@ class calculate_matrices:
         Returns:
             pd.Dataframe: Pandas dataframe chrom positions, fraction modified, and prior state.
         """
-
+        # Intersect methylation data with prior regions
+        # -loj ensures we get all methylation regions, even those without overlap
         methylation_w_priors_bedtool = methylation_bedtool.intersect(
-            cdr_prior_bedtool, c=True
+            cdr_prior_bedtool, 
+            c=True
         )
 
+        # Convert to dataframe
         methylation_w_priors_df = methylation_w_priors_bedtool.saveas().to_dataframe()
         methylation_w_priors_df.columns = [
             "chrom",
             "start",
             "end",
             "fractionmodified",
-            "prior",
+            "emission",
+            "prior"
         ]
 
         return methylation_w_priors_df
@@ -263,10 +267,10 @@ class calculate_matrices:
             np.ndarray: 2x2 transition probability matrix
         """
         # Convert priors to numpy array for faster operations
-        states = methylation_w_priors_df.iloc[["prior"]].to_numpy()
+        prior_states = np.squeeze(methylation_w_priors_df[["prior"]].to_numpy())
 
         # Create pairs of consecutive states using array slicing
-        state_pairs = np.vstack((states[:-1], states[1:])).T
+        state_pairs = np.vstack((prior_states[:-1], prior_states[1:])).T
 
         # Use numpy's unique with return_counts to get transition counts
         unique_pairs, counts = np.unique(state_pairs, axis=0, return_counts=True)
@@ -303,9 +307,10 @@ class calculate_matrices:
 
         Args:
             chrom (str): Chromosome name
-            chrom_methylation_df (pd.DataFrame): Methylation data for the chromosome
-            percentile (bool): Whether to use percentile-based thresholding
-            threshold (float): Initial threshold or percentile value
+            methylation_per_chrom (pd.DataFrame): Methylation data for the chromosome
+            regions_per_chrom (pd.DataFrame): Region of interest data for the chromosome
+            prior_percentile (bool): Whether to use percentile-based thresholding
+            prior_threshold (float): Initial threshold or percentile value
 
         Returns:
             tuple: Chromosome name, prior CDRs DataFrame, window mean BedTool
@@ -332,7 +337,6 @@ class calculate_matrices:
 
         # Find priors using current threshold
         cdr_prior_bedtool = self.find_priors(window_mean_bedtool, prior_threshold)
-
         cdr_prior_df = cdr_prior_bedtool.saveas().to_dataframe()
 
         # assign emissions to methylation bedtool
@@ -340,6 +344,10 @@ class calculate_matrices:
             methylation_per_chrom,
             self.calculate_emission_thresholds(methylation_per_chrom),
         )
+
+        methylation_w_emission_bedtool = pybedtools.BedTool.from_dataframe(
+            methylation_w_emission_df
+        )  # Convert the input dataFrame to a bedTool object
 
         if cdr_prior_df.empty:
             # If no priors found, adjust threshold
@@ -365,7 +373,8 @@ class calculate_matrices:
 
         # add priors on to methylation bedtool
         methylation_w_emissions_priors_df = self.assign_priors(
-            methylation_bedtool, methylation_w_emission_df
+            methylation_bedtool=methylation_w_emission_bedtool, 
+            cdr_prior_bedtool=pybedtools.BedTool.from_dataframe(cdr_prior_df)
         )
 
         # calculate emission and transition matrices with assigned priors
