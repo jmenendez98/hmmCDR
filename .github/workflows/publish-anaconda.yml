@@ -2,7 +2,8 @@ name: Publish to Anaconda Cloud
 
 on:
   release:
-    types: [published]
+    types: 
+      - published
 
 jobs:
   publish:
