@@ -13,5 +13,4 @@ COPY . /app
 
 RUN pip install --no-cache-dir .
 
-
 CMD ["bash"]
