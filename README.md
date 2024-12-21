@@ -1,5 +1,8 @@
 # `hmmCDR`
 
+![Project Status](https://img.shields.io/badge/status-stable-green.svg)
+[![MIT license](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://github.com/jmenendez98/hmmCDR/blob/main/LICENSE)
+[![CI](https://github.com/jmenendez98/hmmCDR/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jmenendez98/hmmCDR/actions/workflows/ci.yml)
 [![Conda](https://img.shields.io/conda/vn/jmmenend/hmmcdr?label=conda&color=green)](https://anaconda.org/jmmenend/hmmcdr)
 [![DockerHub](https://img.shields.io/docker/v/jmmenend/hmmcdr?label=DockerHub&color=blue)](https://hub.docker.com/r/jmmenend/hmmcdr)
 [![pypi](https://img.shields.io/pypi/v/hmmCDR)](https://pypi.org/project/hmmCDR/)
