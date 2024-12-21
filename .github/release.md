@@ -1,6 +1,3 @@
 Before you publish a release on github, do the following:
- * Test chrX and chr17 on `courtyard`
-   - Check that `calculate_matrices` works
-   - run `hmmCDR`, be sure it works even when no priors are found
- * Run on whole genome
-   - should take ~10-30 minutes per haplotype in human
+1. Make sure it has been tested on a whole genome
+2. Update `meta.yaml`, `setup.py`, and `hmmCDR/__init__.py` with correct versions!
