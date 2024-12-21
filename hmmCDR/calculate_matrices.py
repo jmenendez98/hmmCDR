@@ -147,8 +147,7 @@ class calculate_matrices:
         # Intersect methylation data with prior regions
         # -loj ensures we get all methylation regions, even those without overlap
         methylation_w_priors_bedtool = methylation_bedtool.intersect(
-            cdr_prior_bedtool, 
-            c=True
+            cdr_prior_bedtool, c=True
         )
 
         # Convert to dataframe
@@ -159,7 +158,7 @@ class calculate_matrices:
             "end",
             "fractionmodified",
             "emission",
-            "prior"
+            "prior",
         ]
 
         return methylation_w_priors_df
@@ -373,8 +372,8 @@ class calculate_matrices:
 
         # add priors on to methylation bedtool
         methylation_w_emissions_priors_df = self.assign_priors(
-            methylation_bedtool=methylation_w_emission_bedtool, 
-            cdr_prior_bedtool=pybedtools.BedTool.from_dataframe(cdr_prior_df)
+            methylation_bedtool=methylation_w_emission_bedtool,
+            cdr_prior_bedtool=pybedtools.BedTool.from_dataframe(cdr_prior_df),
         )
 
         # calculate emission and transition matrices with assigned priors

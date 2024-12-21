@@ -1,22 +1,25 @@
+import os
+
 import pytest
+
 from hmmCDR.bed_parser import bed_parser
 from hmmCDR.calculate_matrices import calculate_matrices
-import os
+
 
 class TestMatrix:
     @pytest.fixture
     def test_data(self):
         """Fixture to set up test data and parser"""
         test_data_dir = os.path.join("tests", "data")
-        
+
         parser = bed_parser(
             mod_code="m",
             bedgraph=False,
             min_valid_cov=10,
-            sat_type=['active_hor'],
+            sat_type=["active_hor"],
             pre_subset_censat=False,
         )
-        
+
         bedmethyl_test = os.path.join(test_data_dir, "bedmethyl_test.bed")
         censat_test = os.path.join(test_data_dir, "censat_test.bed")
 
@@ -24,8 +27,7 @@ class TestMatrix:
             bedmethyl_path=bedmethyl_test,
             censat_path=censat_test,
         )
-            
-    
+
     @pytest.fixture
     def matrix_calculator(self):
         """Fixture for matrix calculator"""
@@ -73,8 +75,7 @@ class TestMatrix:
         for chrom in emission_matrix_chrom_dict:
             assert emission_matrix_chrom_dict[chrom].shape == (2, 4)
             # Add assertions about matrix shape or content if known
-        
+
         for chrom in transition_matrix_chrom_dict:
             assert transition_matrix_chrom_dict[chrom].shape == (2, 2)
             # Add assertions about matrix shape or content if known
-            
