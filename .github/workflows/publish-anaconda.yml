@@ -28,14 +28,9 @@ jobs:
           # Install build tools
           conda install conda-build anaconda-client
 
-      - name: Build conda package
-        run: |
-          source "$HOME/miniconda/etc/profile.d/conda.sh"
-          conda build . -c conda-forge -c bioconda
-
-      - name: Upload to Anaconda Cloud
+      - name: Build and upload conda package
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         run: |
           source "$HOME/miniconda/etc/profile.d/conda.sh"
-          anaconda --token $ANACONDA_TOKEN upload $HOME/miniconda/conda-bld/noarch/*.tar.bz2 --force
+          conda build . -c conda-forge -c bioconda --token $ANACONDA_TOKEN 
