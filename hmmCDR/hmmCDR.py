@@ -158,12 +158,20 @@ class hmmCDR:
         CDRs["strand"] = "."
 
         # Combine and sort results
-        combined_CDRs = pd.concat(
-            [
-                CDRs[["chrom", "start", "end", "name", "score", "strand"]],
-                low_conf_CDRs[["chrom", "start", "end", "name", "score", "strand"]],
-            ]
-        )
+        try:
+            combined_CDRs = pd.concat(
+                [
+                    CDRs[["chrom", "start", "end", "name", "score", "strand"]],
+                    low_conf_CDRs[["chrom", "start", "end", "name", "score", "strand"]],
+                ]
+            )
+        except KeyError:
+            if low_conf_CDRs.empty:
+                combined_CDRs = CDRs[["chrom", "start", "end", "name", "score", "strand"]]
+            elif CDRs.empty: 
+                combined_CDRs = low_conf_CDRs[["chrom", "start", "end", "name", "score", "strand"]]
+            else:
+                combined_CDRs = pd.DataFrame(columns=["chrom", "start", "end", "name", "score", "strand"])
 
         combined_CDRs["thickStart"] = combined_CDRs["start"]
         combined_CDRs["thickEnd"] = combined_CDRs["end"]
