@@ -6,7 +6,6 @@ from hmmCDR.bed_parser import bed_parser
 
 
 class TestParser:
-
     @pytest.fixture
     def test_data_dir(self):
         return os.path.join("tests", "data")

@@ -167,11 +167,17 @@ class hmmCDR:
             )
         except KeyError:
             if low_conf_CDRs.empty:
-                combined_CDRs = CDRs[["chrom", "start", "end", "name", "score", "strand"]]
-            elif CDRs.empty: 
-                combined_CDRs = low_conf_CDRs[["chrom", "start", "end", "name", "score", "strand"]]
+                combined_CDRs = CDRs[
+                    ["chrom", "start", "end", "name", "score", "strand"]
+                ]
+            elif CDRs.empty:
+                combined_CDRs = low_conf_CDRs[
+                    ["chrom", "start", "end", "name", "score", "strand"]
+                ]
             else:
-                combined_CDRs = pd.DataFrame(columns=["chrom", "start", "end", "name", "score", "strand"])
+                combined_CDRs = pd.DataFrame(
+                    columns=["chrom", "start", "end", "name", "score", "strand"]
+                )
 
         combined_CDRs["thickStart"] = combined_CDRs["start"]
         combined_CDRs["thickEnd"] = combined_CDRs["end"]
