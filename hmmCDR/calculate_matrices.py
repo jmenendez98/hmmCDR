@@ -4,7 +4,8 @@ import os
 
 import numpy as np
 import pandas as pd
-import pybedtools
+
+from typing import Dict, Optional, List, Union
 
 from hmmCDR.bed_parser import bed_parser
 
@@ -35,43 +36,32 @@ class calculate_matrices:
 
         self.w, self.x, self.y, self.z = w, x, y, z
 
-        self.MAX_RETRIES = 10
+    def create_windows(self, regions):
+        windows: Dict[str, np.ndarray] = {}
 
-    def create_chrom_windows(self, regions_bedtool, gap_threshold=10000):
-        """
-        Create fixed-size windows across chromosomes, separating windows in regions with large gaps.
+        for start, end in zip(regions["starts"], regions["ends"]):
+            starts = np.arange(start, end-self.window_size, self.step_size)
+            ends = starts + self.window_size
 
-        Args:
-            methylation_bedtool (pybedtools.BedTool): Input bedtool with 'chrom', 'start', and 'end' columns.
-            gap_threshold (int): Maximum allowable gap between intervals before splitting into separate regions.
+            windows["starts"], windows["ends"] = starts, ends
 
-        Returns:
-            pybedtools.BedTool: BedTool object containing fixed-size windows.
-        """
+        return windows
 
-        # Merge intervals that are closer than the gap threshold
-        merged_regions_bedtool = regions_bedtool.merge(d=gap_threshold)
+    def mean_methylation_in_windows(self, methylation, windows):
 
-        # Generate fixed-size windows from the merged intervals
-        windows_bedtool = merged_regions_bedtool.window_maker(
-            b=merged_regions_bedtool, w=self.window_size, s=self.step_size
-        )
+        windows["means"] = np.empty(dtype=float)
 
-        return windows_bedtool
+        for i, (window_start, window_end) in enumerate(zip(windows["starts"], windows["ends"])):
+            # fetch indices in methylation["starts"] that are within range(window_start, window_end) in vectorized way
+            in_window = (methylation["starts"] >= window_start) & (methylation["starts"] < window_end)
 
-    def mean_within_windows(self, methylation_bedtool, windows_bedtool):
-        """
-        Calculates mean methylation values within each of the windows
+            # Compute the mean methylation score within the window
+            if np.any(in_window):  # If there are methylation scores within the window
+                windows["means"][i] = np.mean(methylation["scores"][in_window])
+            else:  # If no methylation scores fall within the window, assign NaN
+                windows["means"][i] = np.nan
 
-        Args:
-            methylation_bedgraph (pd.DataFrame): Input DataFrame with 'chrom', 'start', and 'end' columns.
-            windows_bedtool (pybedtools.BedTool): BedTool object containing fixed-size windows.
-
-        Returns:
-            pybedtools.BedTool: BedTool object containing fixed-size windows with methylation as the fourth column.
-        """
-        windows_means_bedtool = windows_bedtool.map(methylation_bedtool, c=4, o="mean")
-        return windows_means_bedtool
+        return windows
 
     def find_prior_percentile(self, windows_means_bedtool, prior_threshold):
         """
@@ -566,7 +556,7 @@ def main():
     sat_types = [st.strip() for st in args.sat_type.split(",")]
     output_prefix = os.path.splitext(args.output)[0]
 
-    parseCDRBeds = bed_parser(
+    parse_beds = bed_parser(
         mod_code=args.mod_code,
         bedgraph=args.bedgraph,
         min_valid_cov=args.min_valid_cov,
@@ -574,9 +564,9 @@ def main():
         pre_subset_censat=args.pre_subset_censat,
     )
 
-    methylation_chrom_dict, regions_chrom_dict = parseCDRBeds.process_files(
-        bedmethyl_path=args.bedmethyl,
-        censat_path=args.censat,
+    regions_dict, methylation_dict = parse_beds.process_files(
+        methylation_path=args.bedmethyl,
+        regions_path=args.censat,
     )
 
     priors = calculate_matrices(
@@ -599,8 +589,8 @@ def main():
         emission_matrix_chrom_dict,
         transition_matrix_chrom_dict,
     ) = priors.priors_all_chromosomes(
-        methylation_chrom_dict=methylation_chrom_dict,
-        regions_chrom_dict=regions_chrom_dict,
+        methylation_chrom_dict=methylation_dict,
+        regions_chrom_dict=regions_dict,
         prior_percentile=args.prior_use_percentile,
         prior_threshold=args.prior_threshold,
     )
