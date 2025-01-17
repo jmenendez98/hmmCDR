@@ -12,7 +12,7 @@ class bed_parser:
         min_valid_cov: int = 0,
         methyl_bedgraph: bool = False,
         sat_type: Optional[Union[str, List[str]]] = None,
-        edge_filter: int = 50000,
+        edge_filter: int = 10000,
         regions_prefiltered: bool = False
     ):
         """
