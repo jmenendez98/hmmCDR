@@ -1,152 +1,159 @@
 import os
-import shutil
+import numpy as np
+from typing import Dict, Optional, List, Union
 import tempfile
 
-import pybedtools
-
-
 class bed_parser:
+    """hmmCDR parser to read in region and methylation bed files."""
+
     def __init__(
         self,
-        mod_code=None,
-        min_valid_cov=0,
-        bedgraph=False,
-        sat_type=None,
-        pre_subset_censat=False,
-        temp_dir=None,
-        cache=True,
+        mod_code: Optional[str] = None,
+        min_valid_cov: int = 0,
+        methyl_bedgraph: bool = False,
+        sat_type: Optional[Union[str, List[str]]] = None,
+        edge_filter: int = 50000,
+        regions_prefiltered: bool = False
     ):
         """
-        Initialize the parser with optional filtering parameters
+        Initialize the parser with optional filtering parameters.
 
         Args:
-            min_valid_cov (int): Minimum coverage threshold
-            mod_code (str): Modification code to filter
-            sat_type (list): Satellite types to filter
-            temp_dir (str): Directory for temporary file storage
-            cache (bool): Enable caching of BEDTools operations
+            mod_code: Modification code to filter
+            min_valid_cov: Minimum coverage threshold
+            methyl_bedgraph: Whether the file is a bedgraph
+            sat_type: Satellite type(s) to filter
+            edge_filter: Amount to remove from edges of active_hor regions
+            regions_prefiltered: Whether the regions bed is already subset
         """
         self.mod_code = mod_code
         self.min_valid_cov = min_valid_cov
-        self.bedgraph = bedgraph
-        self.sat_type = sat_type or []
-        self.pre_subset_censat = pre_subset_censat
+        self.methyl_bedgraph = methyl_bedgraph
+        self.sat_type = [sat_type] if isinstance(sat_type, str) else (sat_type or [])
+        self.edge_filter = edge_filter
+        self.regions_prefiltered = regions_prefiltered
+        self.temp_dir = tempfile.gettempdir()
 
-        # Set up temporary directory for intermediate files
-        self.temp_dir = temp_dir or tempfile.gettempdir()
-
-        # Enable caching to improve performance for repeated operations
-        if cache:
-            pybedtools.set_tempdir(self.temp_dir)
-
-    def check_bedtools_installed(self):
-        if shutil.which("bedtools") is None:
-            raise EnvironmentError(
-                "bedtools is required but not installed. Please install it before using this package."
-            )
-
-    def read_and_filter_bedfile(self, filepath, file_type="bedmethyl"):
+    def read_and_filter_regions(self, regions_path: str) -> Dict[str, Dict[str, np.ndarray]]:
         """
-        Read and filter BED-like files with advanced optimizations
-
+        Read and filter regions from a BED file.
+        
         Args:
-            filepath (str): Path to the input file
-            file_type (str): Type of file ('bedmethyl' or 'censat')
-
+            regions_path: Path to the regions BED file
+            
         Returns:
-            pybedtools.BedTool: Filtered genomic intervals
+            Dictionary mapping chromosomes to their start/end positions
+            
+        Raises:
+            FileNotFoundError: If regions_path doesn't exist
+            TypeError: If BED file is incorrectly formatted
         """
-        # Validate file existence
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"File not found: {filepath}")
+        if not os.path.exists(regions_path):
+            raise FileNotFoundError(f"File not found: {regions_path}")
 
-        # Create BedTool directly from file
-        bedtool = pybedtools.BedTool(filepath)
+        region_dict: Dict[str, Dict[str, np.ndarray]] = {}
 
-        # Filtering logic based on file type
-        if file_type == "bedmethyl":
-            if self.bedgraph:
-                # Filter by bedgraph code and coverage
-                def bedgraph_filter(feature):
-                    try:
-                        # Assuming 4 columns, last column is methylation value
-                        return feature
-                    except (IndexError, ValueError):
-                        return False
+        with open(regions_path, 'r') as file:
+            lines = [line.strip().split('\t') for line in file]
+            
+            if any(len(cols) < 3 for cols in lines):
+                raise TypeError(f"Less than 3 columns in {regions_path}. Likely incorrectly formatted bed file.")
 
-                bedtool = bedtool.filter(bedgraph_filter)
+            chrom_lines = {}
+            for cols in lines:
+                if ((self.regions_prefiltered) or (len(cols) > 3 and cols[3] in self.sat_type)):
+                    chrom = cols[0]
+                    if chrom not in chrom_lines:
+                        chrom_lines[chrom] = []
+                    chrom_lines[chrom].append(cols)
 
-            else:
-
-                def bedmethyl_filter(feature):
-                    try:
-                        if (
-                            feature[3] == self.mod_code
-                            and float(feature[4]) >= self.min_valid_cov
-                        ):
-                            # Assuming 4 columns, last column is methylation value
-                            return feature
-                    except (IndexError, ValueError):
-                        return False
-
-                    return False  # Explicitly return False for features not meeting criteria
-
-                bedtool = bedtool.filter(bedmethyl_filter).cut([0, 1, 2, 10])
-
-        elif file_type == "censat":
-            if self.pre_subset_censat:
-                return bedtool
-            else:
-                # Filter by satellite type
-                def censat_filter(feature):
-                    try:
-                        return any(
-                            sat.lower() in feature[3].lower() for sat in self.sat_type
-                        )
-                    except (IndexError, AttributeError):
-                        return False
-
-                bedtool = bedtool.filter(censat_filter)
-
-        return bedtool.saveas()
-
-    def bedtool_to_chrom_dict(self, bedtool):
+            for chrom, chrom_data in chrom_lines.items():
+                starts = np.array([int(cols[1]) + self.edge_filter for cols in chrom_data], dtype=int)
+                ends = np.array([int(cols[2]) - self.edge_filter for cols in chrom_data], dtype=int)
+                region_dict[chrom] = {"starts": starts, "ends": ends}
+                    
+        return region_dict
+    
+    def read_and_filter_methylation(self, methylation_path):
         """
-        Group intersected intervals by chromosome
-
+        Read and filter methylation data from a BED file.
+        
         Args:
-            intersected_bedtool (pybedtools.BedTool): Intersected intervals
-
+            methylation_path: Path to the methylation BED file
+            
         Returns:
-            dict: Chromosome-wise dictionary of methylation data
+            Dictionary mapping chromosomes to their methylation data
+            
+        Raises:
+            FileNotFoundError: If methylation_path doesn't exist
+            TypeError: If BED file is incorrectly formatted
+            ValueError: If trying to filter bedgraph by coverage
         """
-        # Convert to DataFrame for easier manipulation
-        df = bedtool.to_dataframe()
+        if not os.path.exists(methylation_path):
+            raise FileNotFoundError(f"File not found: {methylation_path}")
+        
+        if self.methyl_bedgraph and self.min_valid_cov > 0:
+            raise ValueError(f"{methylation_path} bedgraph file cannot be filtered by coverage.")
 
-        # Group by chromosome
-        return {chrom: group for chrom, group in df.groupby(df.columns[0])}
+        methylation_dict: Dict[str, Dict[str, np.ndarray]] = {}
 
-    def process_files(self, bedmethyl_path, censat_path):
+        with open(methylation_path, 'r') as file:
+            lines = [line.strip().split('\t') for line in file]
+            
+            if any(len(cols) < (4 if self.methyl_bedgraph else 11) for cols in lines):
+                raise TypeError(f"Insufficient columns in {methylation_path}. Likely incorrectly formatted.")
+
+            chrom_lines = {}
+            for cols in lines:
+                chrom = cols[0]
+                if self.methyl_bedgraph or (cols[3] == self.mod_code and float(cols[4]) >= self.min_valid_cov):
+                    if chrom not in chrom_lines:
+                        chrom_lines[chrom] = []
+                    chrom_lines[chrom].append(cols)
+
+            for chrom, chrom_data in chrom_lines.items():
+                starts = np.array([int(cols[1]) for cols in chrom_data], dtype=int)
+                scores = np.array([float(cols[3 if self.methyl_bedgraph else 10]) for cols in chrom_data], dtype=float)
+                methylation_dict[chrom] = {"starts": starts, "scores": scores}
+                    
+        return methylation_dict
+
+    def process_files(self, methylation_path, regions_path):
         """
-        Main processing method to intersect and group files
-
+        Process and intersect methylation and regions files.
+        
         Args:
-            bedmethyl_path (str): Path to BedMethyl file
-            censat_path (str): Path to CenSat file
-
+            methylation_path: Path to methylation BED file
+            regions_path: Path to regions BED file
+            
         Returns:
-            dict: Chromosome-wise dictionary of methylation data
+            Tuple of (region_dict, filtered_methylation_dict)
         """
-        # Read and filter files
-        bedmethyl_bedtool = self.read_and_filter_bedfile(bedmethyl_path, "bedmethyl")
-        censat_bedtool = self.read_and_filter_bedfile(censat_path, "censat")
+        region_dict = self.read_and_filter_regions(regions_path)
+        methylation_dict = self.read_and_filter_methylation(methylation_path)
 
-        # Perform intersection
-        # -wa: Write original A entry
-        intersected_bedmethyl_bedtool = bedmethyl_bedtool.intersect(
-            censat_bedtool, wa=True
-        )
+        filtered_methylation_dict = {}
 
-        return self.bedtool_to_chrom_dict(
-            intersected_bedmethyl_bedtool
-        ), self.bedtool_to_chrom_dict(censat_bedtool)
+        for chrom, regions in region_dict.items():
+            if chrom not in methylation_dict:
+                continue
+
+            methylation_data = methylation_dict[chrom]
+            
+            # Vectorized overlap check
+            region_starts = regions['starts'][:, np.newaxis]
+            region_ends = regions['ends'][:, np.newaxis]
+            methyl_starts = methylation_data['starts']
+            methyl_ends = methyl_starts + 1
+
+            # Check overlap
+            overlaps = (methyl_starts <= region_ends) & (methyl_ends >= region_starts)
+            valid_positions = np.any(overlaps, axis=0)
+
+            if np.any(valid_positions):
+                filtered_methylation_dict[chrom] = {
+                    "starts": methylation_data['starts'][valid_positions],
+                    "scores": methylation_data['scores'][valid_positions]
+                }
+
+        return region_dict, filtered_methylation_dict
