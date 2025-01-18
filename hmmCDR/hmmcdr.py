@@ -39,206 +39,83 @@ class hmmCDR:
         self.low_conf_color = low_conf_color
         self.output_label = output_label
 
-    def runHMM(self, labelled_methylation_data, transition_matrix, emission_matrix):
-        """
-        Apply a Hidden Markov Model (HMM) to analyze methylation data.
+    def runHMM(self, methylation, transition_matrix, emission_matrix):
+        # create HMM
+        model = hmm.CategoricalHMM(n_components=2, n_iter=self.n_iter, tol=self.tol, init_params="")
 
-        This function uses a categorical HMM to decode methylation data and compute
-        HMM scores based on emission probabilities. The resulting scores are added
-        to the input DataFrame.
-
-        Args:
-            methylation_df (pd.DataFrame): A DataFrame containing methylation data with an 'emission' column.
-            transition_matrix (np.ndarray): The transition probability matrix for the HMM.
-            emission_matrix (np.ndarray): The emission probability matrix for the HMM.
-
-        Returns:
-            pd.DataFrame: The input DataFrame with an additional column, 'HMM_score', representing the computed HMM scores based on responsibilities.
-        """
-        model = hmm.CategoricalHMM(
-            n_components=2, n_iter=self.n_iter, tol=self.tol, init_params=""
-        )
+        # initialize HMM variables
         model.startprob_ = np.array([1.0, 0.0])
         model.transmat_ = transition_matrix
         model.emissionprob_ = emission_matrix
 
-        emission_data = labelled_methylation_data["emission"].values.reshape(-1, 1)
+        # get HMM scoring from running HMM on data
+        emission_data = methylation["emissions"].reshape(-1, 1)
         _, predicted_states = model.decode(emission_data, algorithm="viterbi")
         log_likelihood, responsibilities = model.score_samples(emission_data)
 
-        labelled_methylation_data["HMM_score"] = [
-            score[1] * 100 for score in responsibilities
-        ]
+        methylation["hmm_score"] = np.array(responsibilities, dtype=float) * 100
 
-        return labelled_methylation_data
+        # no call is 0, low confidence is 1, high confidence is 2
+        methylation["cdr_calls"] = np.zeros(len(methylation["hmm_score"]), dtype=int) 
+        low_conf_idx = np.where(methylation["hmm_score"] >= self.min_low_conf_score)
+        methylation["cdr_calls"][low_conf_idx] = 1
+        high_conf_idx = np.where(methylation["hmm_score"] >= self.min_cdr_score)
+        methylation["cdr_calls"][high_conf_idx] = 2
 
-    def create_subCDR_df(self, labelled_methylation_data):
-        """
-        Create a DataFrame of high-confidence and low-confidence CpG-dense regions (CDRs).
+        return methylation
 
-        Args:
-            df (pd.DataFrame): Input DataFrame with columns 'chrom', 'start', 'end' as first three columns, and 'CDR_score' as a column in the dataframe.
+    def call_hmm_cdrs(self, methylation_emissions_priors_hmm):
+        methyl_pos = methylation_emissions_priors_hmm["starts"]
+        
+        # pull out all "cdr_calls" with 2 as the value
+        cdr_calls = np.array(methylation_emissions_priors_hmm["cdr_calls"], dtype=int)
+        high_conf_cdrs_idx = np.where(cdr_calls == 2) 
 
-        Returns:
-            pd.DataFrame: Sorted DataFrame of annotated high-confidence and low-confidence CDRs.
-            pd.DataFrame: Original DataFrame with scores used for creating CDRs.
-        """
-        # Step 1: Extract necessary columns
-        hmmCDR_scores = labelled_methylation_data.iloc[:, :3]
-        hmmCDR_scores["HMM_score"] = labelled_methylation_data[["HMM_score"]]
+        cdr_entries = {"starts": [], "ends": [], "name": [], "score": [], "strand": [], "itemRgb": []}
+        # group runs of adjacent indices 
+        # use min and max index of groups with methyl_pos[i] to find length
+        # if length over self.min_cdr_size then run create_entry(), if not pass
+        diff = np.diff(high_conf_cdrs_idx)
+        group_boundaries = np.where(diff > 1)[0] + 1 
+        groups = np.split(high_conf_cdrs_idx, group_boundaries)
 
-        def merge_CpG_dataframe(dataframe, threshold, merge_distance):
-            """
-            Merge CpG regions with scores above the threshold within a certain distance.
+        print(groups)
 
-            Args:
-                dataframe (pd.DataFrame): Input DataFrame with columns 'chrom', 'start', 'end', 'HMM_score'.
-                threshold (float): Minimum score to include a CpG region.
-                merge_distance (int): Maximum allowable gap between regions for merging.
+        return
 
-            Returns:
-                pd.DataFrame: Merged CpG regions with average scores.
-            """
-            # Filter rows by threshold
-            filtered_df = dataframe[dataframe["HMM_score"] > threshold]
-            if filtered_df.empty:
-                return pd.DataFrame(columns=["chrom", "start", "end", "score"])
+    def hmm_single_chromosome(self, chrom, methylation_emissions_priors, emission_matrix, transition_matrix):
+        methylation_emissions_priors_hmm = self.runHMM(methylation_emissions_priors, 
+                                                       emission_matrix, 
+                                                       transition_matrix)
+        cdrs = self.call_hmm_cdrs(methylation_emissions_priors_hmm)
 
-            # Convert to BedTool and merge nearby intervals
-            bedtool = pybedtools.BedTool.from_dataframe(filtered_df)
-            merged_bedtool = bedtool.merge(
-                d=merge_distance, c=4, o="mean"
-            )  # Use mean score
+        return chrom, cdrs, methylation_emissions_priors_hmm
 
-            # Convert back to DataFrame and round scores
-            merged_df = merged_bedtool.to_dataframe(
-                names=["chrom", "start", "end", "score"]
-            )
-            merged_df["score"] = merged_df["score"].round(5)
+    def hmm_all_chromosomes(self, methylation_emissions_priors_all_chroms, emission_matrix_all_chroms, transition_matrix_all_chroms):
+        cdrs_all_chroms = {}
+        methylation_emissions_priors_hmm_all_chroms = {}
 
-            return merged_df
-
-        # Step 2: Generate high-confidence CDRs
-        CDRs = merge_CpG_dataframe(
-            hmmCDR_scores, self.min_cdr_score, self.merge_distance
-        )
-
-        # Filter regions by size
-        CDRs["size"] = CDRs["end"] - CDRs["start"]
-        CDRs = CDRs[CDRs["size"] >= self.min_cdr_size]
-        # cdr_scores_column = CDRs['score']
-
-        # Step 3: Handle low-confidence CDRs
-        low_conf_CDRs = pd.DataFrame()
-        if 0.0 < self.min_low_conf_score < self.min_cdr_score:
-            low_conf_CDRs = merge_CpG_dataframe(
-                hmmCDR_scores, self.min_low_conf_score, self.merge_distance
-            )
-
-            # Filter low-confidence regions by size
-            low_conf_CDRs["size"] = low_conf_CDRs["end"] - low_conf_CDRs["start"]
-            low_conf_CDRs = low_conf_CDRs[
-                low_conf_CDRs["size"] >= self.min_low_conf_size
-            ]
-
-            # Subtract high-confidence regions from low-confidence regions
-            cdr_bedtool = pybedtools.BedTool.from_dataframe(CDRs)
-            low_conf_bedtool = pybedtools.BedTool.from_dataframe(low_conf_CDRs)
-            low_conf_CDRs = low_conf_bedtool.subtract(cdr_bedtool).to_dataframe(
-                names=["chrom", "start", "end", "score", "size"]
-            )
-
-            if not low_conf_CDRs.empty:
-                low_conf_CDRs["name"] = f"low_conf_sub{self.output_label}"
-                low_conf_CDRs["strand"] = "."
-
-        # Step 4: Annotate high-confidence regions
-        CDRs["name"] = f"sub{self.output_label}"
-        CDRs["strand"] = "."
-
-        # Combine and sort results
-        try:
-            combined_CDRs = pd.concat(
-                [
-                    CDRs[["chrom", "start", "end", "name", "score", "strand"]],
-                    low_conf_CDRs[["chrom", "start", "end", "name", "score", "strand"]],
-                ]
-            )
-        except KeyError:
-            if low_conf_CDRs.empty:
-                combined_CDRs = CDRs[
-                    ["chrom", "start", "end", "name", "score", "strand"]
-                ]
-            elif CDRs.empty:
-                combined_CDRs = low_conf_CDRs[
-                    ["chrom", "start", "end", "name", "score", "strand"]
-                ]
-            else:
-                combined_CDRs = pd.DataFrame(
-                    columns=["chrom", "start", "end", "name", "score", "strand"]
-                )
-
-        combined_CDRs["thickStart"] = combined_CDRs["start"]
-        combined_CDRs["thickEnd"] = combined_CDRs["end"]
-
-        # Assign colors based on the 'name' column
-        combined_CDRs["itemRgb"] = np.where(
-            combined_CDRs["name"] == f"sub{self.output_label}",
-            self.main_color,
-            self.low_conf_color,
-        )
-
-        # Ensure integer types for relevant columns
-        combined_CDRs = combined_CDRs.astype(
-            {
-                "start": "int64",
-                "end": "int64",
-                "thickStart": "int64",
-                "thickEnd": "int64",
-            }
-        )
-
-        # Sort by start position
-        combined_CDRs = combined_CDRs.sort_values(by="start").reset_index(drop=True)
-
-        return combined_CDRs, hmmCDR_scores
-
-    def hmm_single_chromosome(
-        self, chrom, labelled_methylation_data, emission_matrix, transition_matrix
-    ):
-        hmmlabelled_bed4Methyl = self.runHMM(
-            labelled_methylation_data, transition_matrix, emission_matrix
-        )
-        hmmCDR_result, hmmCDR_scores = self.create_subCDR_df(hmmlabelled_bed4Methyl)
-        return chrom, hmmCDR_result, hmmCDR_scores, emission_matrix, transition_matrix
-
-    def hmm_all_chromosomes(
-        self,
-        labelled_methylation_all_chroms,
-        emission_matrix_all_chroms=None,
-        transition_matrix_all_chroms=None,
-    ):
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {
                 executor.submit(
                     self.hmm_single_chromosome,
                     chrom,
-                    labelled_methylation_all_chroms[chrom],
-                    emission_matrix_all_chroms[chrom],
-                    transition_matrix_all_chroms[chrom],
+                    methylation_emissions_priors_all_chroms[chrom],
                 ): chrom
-                for chrom in labelled_methylation_all_chroms
+                for chrom in methylation_emissions_priors_all_chroms
             }
 
-            results = {chrom: future.result() for future, chrom in futures.items()}
-            hmmCDRresults_all_chroms = {
-                chrom: result[1] for chrom, result in results.items()
-            }
-            hmmCDRscores_all_chroms = {
-                chrom: result[2] for chrom, result in results.items()
-            }
+            for future in concurrent.futures.as_completed(futures):
+                (
+                    chrom,
+                    cdrs,
+                    methylation_emissions_priors_hmm,
+                ) = future.result()
 
-        return hmmCDRresults_all_chroms, hmmCDRscores_all_chroms
+                cdrs_all_chroms[chrom] = cdrs
+                methylation_emissions_priors_hmm_all_chroms[chrom] = methylation_emissions_priors_hmm
+
+        return cdrs_all_chroms, methylation_emissions_priors_hmm_all_chroms
 
 
 def parse_command_line_arguments():
@@ -328,27 +205,21 @@ def parse_command_line_arguments():
         help="Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: False)",
     )
     argparser.add_argument(
-        "-w",
-        type=float,
-        default=0.0,
-        help="Threshold of non-zero methylation percentile to be classified as None (default: 0.0)",
-    )
-    argparser.add_argument(
         "-x",
         type=float,
-        default=33.3,
+        default=25.0,
         help="Threshold of non-zero methylation percentile to be classified as low (default: 33.3)",
     )
     argparser.add_argument(
         "-y",
         type=float,
-        default=66.6,
+        default=50.0,
         help="Threshold of non-zero methylation percentile to be classified as medium (default: 66.6)",
     )
     argparser.add_argument(
         "-z",
         type=float,
-        default=90.0,
+        default=75.0,
         help="Threshold of non-zero methylation percentile to be classified as high (default: 100.0)",
     )
 
@@ -525,10 +396,16 @@ def main():
         output_label=args.output_label,
     )
 
-    hmm_results_all_chroms, hmm_scores_all_chroms = CDRhmm.hmm_all_chromosomes(
+    '''hmm_results_all_chroms, hmm_scores_all_chroms = CDRhmm.hmm_all_chromosomes(
         methylation_emissions_priors_all_chroms=methylation_emissions_priors_all_chroms,
         emission_matrix_all_chroms=emission_matrix_all_chroms,
         transition_matrix_all_chroms=transition_matrix_all_chroms,
+    )'''
+    hmm_results_all_chroms, hmm_scores_all_chroms = CDRhmm.hmm_single_chromosome(
+        chrom="chr17_PATERNAL",
+        methylation_emissions_priors=methylation_emissions_priors_all_chroms["chr17_PATERNAL"],
+        emission_matrix=emission_matrix_all_chroms["chr17_PATERNAL"],
+        transition_matrix=transition_matrix_all_chroms["chr17_PATERNAL"],
     )
 
 if __name__ == "__main__":

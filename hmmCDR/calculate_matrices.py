@@ -229,7 +229,6 @@ class calculate_matrices:
         methylation_emissions_priors_all_chroms = {}
         emission_matrix_all_chroms = {}
         transition_matrix_all_chroms = {}
-        chromosomes = methylation_all_chroms.keys()
 
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {
@@ -237,7 +236,7 @@ class calculate_matrices:
                     self.priors_single_chromosome,
                     chrom, methylation_all_chroms[chrom], regions_all_chroms[chrom], prior_threshold,
                 ): chrom
-                for chrom in chromosomes
+                for chrom in methylation_all_chroms
             }
 
             for future in concurrent.futures.as_completed(futures):
