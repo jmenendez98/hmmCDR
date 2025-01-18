@@ -4,7 +4,6 @@ import concurrent.futures
 import os
 
 import numpy as np
-import pandas as pd
 from hmmlearn import hmm
 
 from hmmCDR.bed_parser import bed_parser

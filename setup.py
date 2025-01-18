@@ -17,7 +17,6 @@ setup(
     },
     install_requires=[
         "numpy>=1.21.5",
-        "pandas>=1.3.5",
         "hmmlearn>=0.3.0",
     ],
     entry_points={
