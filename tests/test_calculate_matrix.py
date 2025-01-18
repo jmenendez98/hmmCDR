@@ -14,18 +14,18 @@ class TestMatrix:
 
         parser = bed_parser(
             mod_code="m",
-            bedgraph=False,
-            min_valid_cov=10,
+            methyl_bedgraph=False,
+            min_valid_cov=1,
             sat_type=["active_hor"],
-            pre_subset_censat=False,
+            regions_prefiltered=False,
         )
 
         bedmethyl_test = os.path.join(test_data_dir, "bedmethyl_test.bed")
         censat_test = os.path.join(test_data_dir, "censat_test.bed")
 
         return parser.process_files(
-            bedmethyl_path=bedmethyl_test,
-            censat_path=censat_test,
+            methylation_path=bedmethyl_test,
+            regions_path=censat_test,
         )
 
     @pytest.fixture
@@ -34,13 +34,12 @@ class TestMatrix:
         return calculate_matrices(
             window_size=1190,
             step_size=1190,
-            min_prior_size=8330,
+            min_prior_size=11900,
             enrichment=False,
             percentile_emissions=False,
-            w=0.0,
-            x=33.0,
-            y=66.0,
-            z=100.0,
+            x=25.0,
+            y=50.0,
+            z=75.0,
             output_label="CDR",
         )
 
@@ -56,7 +55,7 @@ class TestMatrix:
             methylation_chrom_dict=test_data[0],
             regions_chrom_dict=test_data[1],
             prior_percentile=False,
-            prior_threshold=20,
+            prior_threshold=33.3,
         )
 
         # Changed from .values to proper dictionary access

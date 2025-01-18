@@ -16,7 +16,6 @@ class hmmCDR:
         self,
         n_iter,
         tol,
-        merge_distance,
         min_cdr_size,
         min_cdr_score,
         min_low_conf_score,
@@ -27,7 +26,6 @@ class hmmCDR:
 
         self.n_iter = n_iter
         self.tol = tol
-        self.merge_distance = merge_distance
 
         self.min_cdr_size = min_cdr_size
         self.min_cdr_score = min_cdr_score
@@ -97,8 +95,8 @@ class hmmCDR:
                 cdr_entries["score"].append(score)
                 cdr_entries["itemRgb"].append(self.main_color)
             else:
-                cdr_entries["starts"].append(start)
-                cdr_entries["ends"].append(end)
+                cdr_entries["starts"].append(methyl_pos[min_idx-1]+1)
+                cdr_entries["ends"].append(methyl_pos[min_idx+1]-1)
                 cdr_entries["name"].append(f"low_conf_sub{self.output_label}")
                 cdr_entries["strand"].append(".")
                 cdr_entries["score"].append(score)
@@ -124,8 +122,8 @@ class hmmCDR:
             if np.isnan(score):
                 continue
 
-            cdr_entries["starts"].append(start)
-            cdr_entries["ends"].append(end)
+            cdr_entries["starts"].append(methyl_pos[min_idx-1]+1)
+            cdr_entries["ends"].append(methyl_pos[min_idx+1]-1)
             cdr_entries["name"].append(f"low_conf_sub{self.output_label}")
             cdr_entries["strand"].append(".")
             cdr_entries["score"].append(score)
@@ -301,12 +299,6 @@ def parse_command_line_arguments():
         help="Cutoff for model convergence in hmmlearn. (default: 10)",
     )
     argparser.add_argument(
-        "--hmm_merge_distance",
-        type=int,
-        default=1190,
-        help="Distance to merge adjacently labelled subCDR regions. (default: 1190)",
-    )
-    argparser.add_argument(
         "--min_cdr_size",
         type=int,
         default=1190,
@@ -343,12 +335,6 @@ def parse_command_line_arguments():
         type=int,
         default=3,
         help="Minimum number of subCDRs to report a CDR. (default: 3)",
-    )
-    argparser.add_argument(
-        "--large_merge_distance",
-        type=int,
-        default=200000,
-        help="Distance to merge subCDRs into a larger CDR annotation. (default: 200000)",
     )
     argparser.add_argument(
         "--output_everything",
@@ -452,7 +438,6 @@ def main():
     CDRhmm = hmmCDR(
         n_iter=args.n_iter,
         tol=args.tol,
-        merge_distance=args.hmm_merge_distance,
         min_cdr_size=args.min_cdr_size,
         min_cdr_score=args.min_cdr_score,
         min_low_conf_score=args.min_low_conf_score,

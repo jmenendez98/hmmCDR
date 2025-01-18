@@ -380,6 +380,8 @@ def main():
         regions_path=args.censat,
     )
 
+    print(methylation_dict.keys())
+
     priors = calculate_matrices(
         window_size=args.window_size, step_size=args.window_size,
         min_prior_size=args.min_prior_size, percentile_emissions=args.percentile_emissions,

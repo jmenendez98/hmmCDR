@@ -5,7 +5,7 @@ import pytest
 
 from hmmCDR.bed_parser import bed_parser
 from hmmCDR.calculate_matrices import calculate_matrices
-from hmmCDR.hmmCDR import hmmCDR
+from hmmCDR.hmmcdr import hmmCDR
 
 
 class TestHMMCDR:
@@ -16,18 +16,18 @@ class TestHMMCDR:
 
         parser = bed_parser(
             mod_code="m",
-            bedgraph=False,
-            min_valid_cov=10,
+            methyl_bedgraph=False,
+            min_valid_cov=1,
             sat_type=["active_hor"],
-            pre_subset_censat=False,
+            regions_prefiltered=False,
         )
 
         bedmethyl_test = os.path.join(test_data_dir, "bedmethyl_test.bed")
         censat_test = os.path.join(test_data_dir, "censat_test.bed")
 
         return parser.process_files(
-            bedmethyl_path=bedmethyl_test,
-            censat_path=censat_test,
+            methylation_path=bedmethyl_test,
+            regions_path=censat_test,
         )
 
     @pytest.fixture
@@ -36,13 +36,12 @@ class TestHMMCDR:
         return calculate_matrices(
             window_size=1190,
             step_size=1190,
-            min_prior_size=8330,
+            min_prior_size=11900,
             enrichment=False,
             percentile_emissions=False,
-            w=0.0,
-            x=33.0,
-            y=66.0,
-            z=100.0,
+            x=25,
+            y=50.0,
+            z=75.0,
             output_label="CDR",
         )
 
@@ -52,10 +51,8 @@ class TestHMMCDR:
         return hmmCDR(
             n_iter=1,
             tol=10,
-            merge_distance=200000,
             min_cdr_size=3000,
-            min_cdr_score=95,
-            min_low_conf_size=1,
+            min_cdr_score=90,
             min_low_conf_score=50,
             main_color="50,50,255",
             low_conf_color="100,150,200",

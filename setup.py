@@ -36,9 +36,7 @@ setup(
         "dev": [
             "pytest",
             "pytest-cov",
-            "black",
             "isort",
-            "flake8",
             "mypy",
         ]
     },

@@ -114,10 +114,12 @@ class bed_parser:
                 if self.methyl_bedgraph:
                     frac_mod = float(columns[3])
                     methylation_dict[chrom]["starts"].append(start)
+                    methylation_dict[chrom]["ends"].append(start+1)
                     methylation_dict[chrom]["fraction_modified"].append(frac_mod)
                 elif columns[3] == self.mod_code and int(columns[4]) >= self.min_valid_cov:
                     frac_mod = float(columns[10])
                     methylation_dict[chrom]["starts"].append(start)
+                    methylation_dict[chrom]["ends"].append(start+1)
                     methylation_dict[chrom]["fraction_modified"].append(frac_mod)
                     
         return methylation_dict
