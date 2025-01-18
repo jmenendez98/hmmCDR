@@ -398,19 +398,27 @@ def main():
         transition_matrix_all_chroms,
     ) = priors.priors_all_chromosomes(methylation_all_chroms=methylation_dict, regions_all_chroms=regions_dict, prior_threshold=args.prior_threshold)
 
+    print(priors_all_chroms)
+
     def generate_output_bed(all_chroms_dict, output_file, columns=["starts", "ends"]):
-        with open(output_file, 'w') as file: 
-            for chrom in all_chroms_dict:
-                chrom_data = all_chroms_dict[chrom]
-                for i in range(len(all_chroms_dict["starts"])):
-                    for col in columns:
-                       if col in chrom_data:
-                            line.append(str(chrom_data[col][i])) 
+        all_lines = []
+        for chrom in all_chroms_dict:
+            chrom_data = all_chroms_dict[chrom]
+            for i in range(len(chrom_data["starts"])):
+                line = [chrom]
+                for col in columns:
+                    if col in chrom_data:
+                        line.append(str(chrom_data[col][i])) 
+                all_lines.append(line)
+                
+        all_lines = sorted(all_lines, key=lambda x: (x[0], int(x[1])))
+        with open(output_file, 'w') as file:
+            for line in all_lines: 
                 file.write("\t".join(line) + "\n")
 
-    generate_output_bed(priors_all_chroms, f"{args.output_prefix}_priors.bed", columns=["starts", "ends"])
-    generate_output_bed(priors_all_chroms, f"{args.output_prefix}_windowmean.bedgraph", columns=["starts", "ends"])
-    
+    generate_output_bed(priors_all_chroms, f"{output_prefix}_priors.bed", columns=["starts", "ends"])
+    generate_output_bed(windowmean_all_chroms, f"{output_prefix}_windowmean.bedgraph", columns=["starts", "ends"])
+
     # Save matrices to a text file with key: numpy array representation
     with open(f"{output_prefix}_emission_matrices.txt", "w") as file:
         for key, matrix in emission_matrix_all_chroms.items():

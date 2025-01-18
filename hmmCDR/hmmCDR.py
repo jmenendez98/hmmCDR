@@ -5,7 +5,6 @@ import os
 
 import numpy as np
 import pandas as pd
-import pybedtools
 from hmmlearn import hmm
 
 from hmmCDR.bed_parser import bed_parser
@@ -215,31 +214,31 @@ class hmmCDR:
 
     def hmm_all_chromosomes(
         self,
-        labelled_methylation_chrom_dict,
-        emission_matrix_chrom_dict=None,
-        transition_matrix_chrom_dict=None,
+        labelled_methylation_all_chroms,
+        emission_matrix_all_chroms=None,
+        transition_matrix_all_chroms=None,
     ):
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {
                 executor.submit(
                     self.hmm_single_chromosome,
                     chrom,
-                    labelled_methylation_chrom_dict[chrom],
-                    emission_matrix_chrom_dict[chrom],
-                    transition_matrix_chrom_dict[chrom],
+                    labelled_methylation_all_chroms[chrom],
+                    emission_matrix_all_chroms[chrom],
+                    transition_matrix_all_chroms[chrom],
                 ): chrom
-                for chrom in labelled_methylation_chrom_dict
+                for chrom in labelled_methylation_all_chroms
             }
 
             results = {chrom: future.result() for future, chrom in futures.items()}
-            hmmCDRresults_chrom_dict = {
+            hmmCDRresults_all_chroms = {
                 chrom: result[1] for chrom, result in results.items()
             }
-            hmmCDRscores_chrom_dict = {
+            hmmCDRscores_all_chroms = {
                 chrom: result[2] for chrom, result in results.items()
             }
 
-        return hmmCDRresults_chrom_dict, hmmCDRscores_chrom_dict
+        return hmmCDRresults_all_chroms, hmmCDRscores_all_chroms
 
 
 def parse_command_line_arguments():
@@ -469,8 +468,8 @@ def main():
         pre_subset_censat=args.pre_subset_censat,
     )
 
-    methylation_chrom_dict, regions_chrom_dict = parseCDRBeds.process_files(
-        bedmethyl_path=args.bedmethyl, censat_path=args.censat
+    methylation_all_chroms, regions_all_chroms = parseCDRBeds.process_files(
+        methylation_path=args.bedmethyl, regions_path=args.censat
     )
 
     # create priors class as either way needs to be utilized
@@ -486,137 +485,32 @@ def main():
         z=args.z,
         output_label=args.output_label,
     )
-    labelled_methylation_chrom_dict = {}
 
-    # Skip prior finding if matrices are provided
-    if args.e_matrix and args.t_matrix:
-        # Parse emission matrix from string or file
-        emission_matrix_chrom_dict = {}
-        try:
-            if os.path.isfile(args.e_matrix):
-                with open(args.e_matrix, "r") as f:
-                    emission_input = f.read().strip()
-            else:
-                emission_input = args.e_matrix
+    (
+        priors_all_chroms,
+        windowmean_all_chroms,
+        methylation_emissions_priors_all_chroms,
+        emission_matrix_all_chroms,
+        transition_matrix_all_chroms,
+    ) = priors.priors_all_chromosomes(
+        methylation_all_chroms=methylation_all_chroms,
+        regions_all_chroms=regions_all_chroms,
+        prior_percentile=args.prior_use_percentile,
+        prior_threshold=args.prior_threshold,
+    )
 
-            # Check for label
-            if ":" in emission_input:
-                chrom, matrix_str = emission_input.split(":", 1)
-                emission_matrix_chrom_dict[chrom.strip()] = ast.literal_eval(
-                    matrix_str.strip()
-                )
-            else:
-                # No chromosome specified, use for all chromosomes in methylation_chrom_dict
-                matrix = ast.literal_eval(emission_input)
-                for chrom in methylation_chrom_dict:
-                    emission_matrix_chrom_dict[chrom] = matrix
+    print(priors_all_chroms)
+    print(methylation_emissions_priors_all_chroms.keys())
 
-        except (ValueError, SyntaxError, FileNotFoundError):
-            # [[0.008791358571574608, 0.4036358060449109, 0.4158005929055781, 0.1717722424779364], [0.025597269624573378, 0.9215017064846417, 0.05005688282138794, 0.002844141069397042]]
-            raise ValueError(
-                "Invalid emission matrix format. Use format like: '[[0.008,0.40,0.412,0.18],[0.025,0.9225,0.05,0.0025]]', 'chr1:[[0.008,0.40,0.412,0.18],[0.025,0.9225,0.05,0.0025]]...' or path to a file containing the matrix"
-            )
+    if args.output_all:
+        # Save matrices to a text file with key: numpy array representation
+        with open(f"{output_prefix}_emission_matrices.txt", "w") as f:
+            for key, matrix in emission_matrix_all_chroms.items():
+                f.write(f"{key}: {matrix.tolist()}\n")
 
-        # Check for missing chromosome matrices and print warnings
-        for chrom in methylation_chrom_dict:
-            if chrom not in emission_matrix_chrom_dict:
-                print(
-                    f"Warning: No emission matrix given for chromosome {chrom}.\n\tProceeding with default emission matrix for {chrom}: [[0.008,0.40,0.412,0.18],[0.025,0.9225,0.05,0.0025]] (not recommended if emissions are changed!!!)"
-                )
-                emission_matrix_chrom_dict[chrom] = [
-                    [0.008, 0.40, 0.412, 0.18],
-                    [0.025, 0.9225, 0.05, 0.0025],
-                ]
-
-        # Parse transition matrix from string or file
-        transition_matrix_chrom_dict = {}
-        try:
-            if os.path.isfile(args.t_matrix):
-                with open(args.t_matrix, "r") as f:
-                    transition_input = f.read().strip()
-            else:
-                transition_input = args.t_matrix
-
-            # Check for label
-            if ":" in transition_input:
-                chrom, matrix_str = transition_input.split(":", 1)
-                transition_matrix_chrom_dict[chrom.strip()] = ast.literal_eval(
-                    matrix_str.strip()
-                )
-            else:
-                # No chromosome specified, use for all chromosomes in methylation_chrom_dict
-                matrix = ast.literal_eval(transition_input)
-                for chrom in methylation_chrom_dict:
-                    transition_matrix_chrom_dict[chrom] = matrix
-
-        except (ValueError, SyntaxError, FileNotFoundError):
-            raise ValueError(
-                "Invalid transition matrix format. Use format like: '[[0.9999, 0.0001], [0.0025, 0.9975]]', 'chr1:[[0.9999, 0.0001], [0.0025, 0.9975]]...' or path to a file containing the matrix"
-            )
-
-        # Check for missing chromosome transition matrices and print warnings
-        for chrom in methylation_chrom_dict:
-            if chrom not in transition_matrix_chrom_dict:
-                print(
-                    f"Warning: No transition matrix given for chromosome {chrom}.\n\tProceeding with default transition matrix for {chrom}: [[0.9999, 0.0001], [0.0025, 0.9975]]"
-                )
-                transition_matrix_chrom_dict[chrom] = [
-                    [0.9999, 0.0001],
-                    [0.0025, 0.9975],
-                ]
-
-        # label methylation data if matrices are passed in...
-        for chrom in methylation_chrom_dict:
-            labelled_methylation_chrom_dict[chrom] = priors.assign_emissions(
-                methylation_chrom_dict[chrom],
-                priors.calculate_emission_thresholds(methylation_chrom_dict[chrom]),
-            )
-
-    else:
-        (
-            priors_chrom_dict,
-            windowmean_chrom_dict,
-            labelled_methylation_chrom_dict,
-            emission_matrix_chrom_dict,
-            transition_matrix_chrom_dict,
-        ) = priors.priors_all_chromosomes(
-            methylation_chrom_dict=methylation_chrom_dict,
-            regions_chrom_dict=regions_chrom_dict,
-            prior_percentile=args.prior_use_percentile,
-            prior_threshold=args.prior_threshold,
-        )
-
-        if args.output_all:
-            # Concatenate, sort and save bed files
-            combined_priors = pd.concat(priors_chrom_dict.values(), ignore_index=True)
-            combined_priors = combined_priors.sort_values(
-                by=combined_priors.columns[:2].tolist()
-            )
-            combined_priors.to_csv(
-                f"{output_prefix}_priors.bed", sep="\t", index=False, header=False
-            )
-
-            combined_windowmean = pd.concat(
-                windowmean_chrom_dict.values(), ignore_index=True
-            )
-            combined_windowmean = combined_windowmean.sort_values(
-                by=combined_windowmean.columns[:2].tolist()
-            )
-            combined_windowmean.to_csv(
-                f"{output_prefix}_windowmean.bedgraph",
-                sep="\t",
-                index=False,
-                header=False,
-            )
-
-            # Save matrices to a text file with key: numpy array representation
-            with open(f"{output_prefix}_emission_matrices.txt", "w") as f:
-                for key, matrix in emission_matrix_chrom_dict.items():
-                    f.write(f"{key}: {matrix.tolist()}\n")
-
-            with open(f"{output_prefix}_transition_matrices.txt", "w") as f:
-                for key, matrix in transition_matrix_chrom_dict.items():
-                    f.write(f"{key}: {matrix.tolist()}\n")
+        with open(f"{output_prefix}_transition_matrices.txt", "w") as f:
+            for key, matrix in transition_matrix_all_chroms.items():
+                f.write(f"{key}: {matrix.tolist()}\n")
 
     CDRhmm = hmmCDR(
         n_iter=args.n_iter,
@@ -631,71 +525,11 @@ def main():
         output_label=args.output_label,
     )
 
-    hmm_results_chrom_dict, hmm_scores_chrom_dict = CDRhmm.hmm_all_chromosomes(
-        labelled_methylation_chrom_dict=labelled_methylation_chrom_dict,
-        emission_matrix_chrom_dict=emission_matrix_chrom_dict,
-        transition_matrix_chrom_dict=transition_matrix_chrom_dict,
+    hmm_results_all_chroms, hmm_scores_all_chroms = CDRhmm.hmm_all_chromosomes(
+        methylation_emissions_priors_all_chroms=methylation_emissions_priors_all_chroms,
+        emission_matrix_all_chroms=emission_matrix_all_chroms,
+        transition_matrix_all_chroms=transition_matrix_all_chroms,
     )
-
-    # output subCDR
-    combined_subCDRs = pd.concat(hmm_results_chrom_dict.values(), axis=0)
-    combined_subCDRs = combined_subCDRs.sort_values(
-        by=list(combined_subCDRs.columns[:2])
-    )
-    combined_subCDRs.to_csv(
-        f"{output_prefix}_sub{args.output_label}.bed",
-        sep="\t",
-        index=False,
-        header=False,
-    )
-
-    if args.output_all:  # output HMM score bedgraph
-        combined_hmm_scores = pd.concat(hmm_scores_chrom_dict.values(), axis=0)
-        combined_hmm_scores = combined_hmm_scores.sort_values(
-            by=list(combined_hmm_scores.columns[:2])
-        )
-        combined_hmm_scores.to_csv(
-            f"{output_prefix}_scores.bedgraph", sep="\t", index=False, header=False
-        )
-
-    # create final CDR output that merges adjacent subCDRs and reports scoring of over 3
-    combined_subCDR_bedtool = pybedtools.BedTool.from_dataframe(
-        combined_subCDRs[combined_subCDRs.iloc[:, 3] == f"sub{args.output_label}"]
-    )
-    combined_big_CDR = combined_subCDR_bedtool.merge(
-        d=args.large_merge_distance, c=2, o="count"
-    ).to_dataframe(names=["chrom", "start", "end", "count"])
-    combined_big_CDR["name"] = combined_big_CDR.loc[:, "count"].apply(
-        lambda x: (
-            f"low_conf_{args.output_label}"
-            if x < args.min_subCDRs
-            else f"{args.output_label}"
-        )
-    )
-
-    # Format final output dataframe
-    bigCDR_names = combined_big_CDR.loc[:, "name"]
-    bigCDR_counts = combined_big_CDR.loc[:, "count"]
-    combined_big_CDR = combined_big_CDR.iloc[:, :3]
-    combined_big_CDR["name"] = bigCDR_names
-    combined_big_CDR["score"] = bigCDR_counts
-    combined_big_CDR["strand"] = "."
-    combined_big_CDR["thickStart"] = combined_big_CDR.iloc[:, 1]
-    combined_big_CDR["thickEnd"] = combined_big_CDR.iloc[:, 2]
-    combined_big_CDR["itemRgb"] = np.where(
-        combined_big_CDR["name"] == f"{args.output_label}",
-        args.main_color,
-        np.where(
-            combined_big_CDR["name"] == f"low_conf_{args.output_label}",
-            args.low_conf_color,
-            "",
-        ),
-    )
-
-    # Sort the final output
-    combined_big_CDR = combined_big_CDR.sort_values(by=["chrom", "start"])
-    combined_big_CDR.to_csv(args.output, sep="\t", index=False, header=False)
-
 
 if __name__ == "__main__":
     main()
