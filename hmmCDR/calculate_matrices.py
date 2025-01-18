@@ -53,14 +53,14 @@ class calculate_matrices:
 
         windows["means"] = np.empty(len(windows["starts"]), dtype=float)
         methyl_starts = np.array(methylation["starts"], dtype=int)
-        methyl_scores = np.array(methylation["scores"], dtype=float)
+        methyl_frac_mod = np.array(methylation["fraction_modified"], dtype=float)
 
         for i, (region_start, region_end) in enumerate(zip(windows["starts"], windows["ends"])):
             overlaps = np.where(np.logical_and(methyl_starts<region_end, methyl_starts>=region_start))
 
-            if len(methyl_scores[overlaps]) > 0:
-                # Calculate mean of scores for overlapping sites
-                windows["means"][i] = np.mean(methyl_scores[overlaps])
+            if len(methyl_frac_mod[overlaps]) > 0:
+                # Calculate mean of fraction for overlapping sites
+                windows["means"][i] = np.mean(methyl_frac_mod[overlaps])
             else:
                 windows["means"][i] = np.nan
 
@@ -124,10 +124,10 @@ class calculate_matrices:
 
     def assign_emissions(self, methylation):
 
-        methylation_scores = np.array(methylation["scores"], dtype=float)
-        methylation_after_emissions_assigned = np.zeros(len(methylation_scores), dtype=int)
+        methyl_frac_mod = np.array(methylation["fraction_modified"], dtype=float)
+        methylation_after_emissions_assigned = np.zeros(len(methyl_frac_mod), dtype=int)
 
-        for i, score in enumerate(methylation_scores):
+        for i, score in enumerate(methyl_frac_mod):
             if score > self.x and score <= self.y:
                 methylation_after_emissions_assigned[i] = 1
             elif score > self.y and score <= self.z:
@@ -397,8 +397,6 @@ def main():
         emission_matrix_all_chroms,
         transition_matrix_all_chroms,
     ) = priors.priors_all_chromosomes(methylation_all_chroms=methylation_dict, regions_all_chroms=regions_dict, prior_threshold=args.prior_threshold)
-
-    print(priors_all_chroms)
 
     def generate_output_bed(all_chroms_dict, output_file, columns=["starts", "ends"]):
         all_lines = []

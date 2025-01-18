@@ -109,16 +109,16 @@ class bed_parser:
                 chrom = columns[0]
                 start = int(columns[1])
                 if chrom not in methylation_dict.keys():
-                    methylation_dict[chrom] = {"starts": [], "scores": []}
+                    methylation_dict[chrom] = {"starts": [], "fraction_modified": []}
                     
                 if self.methyl_bedgraph:
                     score = float(columns[3])
                     methylation_dict[chrom]["starts"].append(start)
-                    methylation_dict[chrom]["scores"].append(score)
+                    methylation_dict[chrom]["fraction_modified"].append(score)
                 elif columns[3] == self.mod_code and int(columns[4]) >= self.min_valid_cov:
                     score = float(columns[10])
                     methylation_dict[chrom]["starts"].append(start)
-                    methylation_dict[chrom]["scores"].append(score)
+                    methylation_dict[chrom]["fraction_modified"].append(score)
                     
         return methylation_dict
 
@@ -159,7 +159,7 @@ class bed_parser:
                 filtered_methylation_dict[chrom] = {
                     "starts": [start for start, overlap in zip(methylation_data['starts'], overlaps) if overlap],
                     "ends": [start+1 for start, overlap in zip(methylation_data['starts'], overlaps) if overlap],
-                    "scores": [score for score, overlap in zip(methylation_data['scores'], overlaps) if overlap]
+                    "fraction_modified": [score for score, overlap in zip(methylation_data['fraction_modified'], overlaps) if overlap]
                 }
             else: 
                 ValueError(f"No methylation data from {methylation_path} overlapping with {regions_path}.")
