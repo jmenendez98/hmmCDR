@@ -34,7 +34,7 @@ class bed_parser:
         self.regions_prefiltered = regions_prefiltered
         self.temp_dir = tempfile.gettempdir()
 
-    def read_and_filter_regions(self, regions_path: str) -> Dict[str, Dict[str, np.ndarray]]:
+    def read_and_filter_regions(self, regions_path: str) -> Dict[str, Dict[str, list]]:
         """
         Read and filter regions from a BED file.
         
@@ -51,30 +51,31 @@ class bed_parser:
         if not os.path.exists(regions_path):
             raise FileNotFoundError(f"File not found: {regions_path}")
 
-        region_dict: Dict[str, Dict[str, np.ndarray]] = {}
+        region_dict: Dict[str, Dict[str, list]] = {}
 
         with open(regions_path, 'r') as file:
-            lines = [line.strip().split('\t') for line in file]
+            lines = file.readlines()
             
             if any(len(cols) < 3 for cols in lines):
                 raise TypeError(f"Less than 3 columns in {regions_path}. Likely incorrectly formatted bed file.")
 
-            chrom_lines = {}
-            for cols in lines:
-                if ((self.regions_prefiltered) or (len(cols) > 3 and cols[3] in self.sat_type)):
-                    chrom = cols[0]
-                    if chrom not in chrom_lines:
-                        chrom_lines[chrom] = []
-                    chrom_lines[chrom].append(cols)
+            for line in lines:
+                columns = line.strip().split('\t')
+                chrom = columns[0]
+                start, end = int(columns[1]), int(columns[2])
 
-            for chrom, chrom_data in chrom_lines.items():
-                starts = np.array([int(cols[1]) + self.edge_filter for cols in chrom_data], dtype=int)
-                ends = np.array([int(cols[2]) - self.edge_filter for cols in chrom_data], dtype=int)
-                region_dict[chrom] = {"starts": starts, "ends": ends}
-                    
+                if chrom not in region_dict:
+                    region_dict[chrom] = {"starts": [], "ends": []}
+
+                if (self.regions_prefiltered) or any(sat in columns[3] for sat in self.sat_type):
+                    if (end - self.edge_filter) < start:
+                        continue
+                    region_dict[chrom]["starts"].append(start+self.edge_filter)
+                    region_dict[chrom]["ends"].append(end-self.edge_filter)
+
         return region_dict
     
-    def read_and_filter_methylation(self, methylation_path):
+    def read_and_filter_methylation(self, methylation_path: str) -> Dict[str, Dict[str, list]]:
         """
         Read and filter methylation data from a BED file.
         
@@ -95,26 +96,29 @@ class bed_parser:
         if self.methyl_bedgraph and self.min_valid_cov > 0:
             raise ValueError(f"{methylation_path} bedgraph file cannot be filtered by coverage.")
 
-        methylation_dict: Dict[str, Dict[str, np.ndarray]] = {}
+        methylation_dict: Dict[str, Dict[str, list]] = {}
 
         with open(methylation_path, 'r') as file:
-            lines = [line.strip().split('\t') for line in file]
+            lines = file.readlines()
             
             if any(len(cols) < (4 if self.methyl_bedgraph else 11) for cols in lines):
                 raise TypeError(f"Insufficient columns in {methylation_path}. Likely incorrectly formatted.")
 
-            chrom_lines = {}
-            for cols in lines:
-                chrom = cols[0]
-                if self.methyl_bedgraph or (cols[3] == self.mod_code and float(cols[4]) >= self.min_valid_cov):
-                    if chrom not in chrom_lines:
-                        chrom_lines[chrom] = []
-                    chrom_lines[chrom].append(cols)
-
-            for chrom, chrom_data in chrom_lines.items():
-                starts = np.array([int(cols[1]) for cols in chrom_data], dtype=int)
-                scores = np.array([float(cols[3 if self.methyl_bedgraph else 10]) for cols in chrom_data], dtype=float)
-                methylation_dict[chrom] = {"starts": starts, "scores": scores}
+            for line in lines:
+                columns = line.strip().split('\t')
+                chrom = columns[0]
+                start = int(columns[1])
+                if chrom not in methylation_dict.keys():
+                    methylation_dict[chrom] = {"starts": [], "scores": []}
+                    
+                if self.methyl_bedgraph:
+                    score = float(columns[3])
+                    methylation_dict[chrom]["starts"].append(start)
+                    methylation_dict[chrom]["scores"].append(score)
+                elif columns[3] == self.mod_code and int(columns[4]) >= self.min_valid_cov:
+                    score = float(columns[10])
+                    methylation_dict[chrom]["starts"].append(start)
+                    methylation_dict[chrom]["scores"].append(score)
                     
         return methylation_dict
 
@@ -141,19 +145,22 @@ class bed_parser:
             methylation_data = methylation_dict[chrom]
             
             # Vectorized overlap check
-            region_starts = regions['starts'][:, np.newaxis]
-            region_ends = regions['ends'][:, np.newaxis]
-            methyl_starts = methylation_data['starts']
-            methyl_ends = methyl_starts + 1
+            region_starts = np.array(regions['starts'], dtype=int)
+            region_ends = np.array(regions['ends'], dtype=int)
+            methyl_starts = np.array(methylation_data['starts'], dtype=int)
 
-            # Check overlap
-            overlaps = (methyl_starts <= region_ends) & (methyl_ends >= region_starts)
-            valid_positions = np.any(overlaps, axis=0)
+            overlaps = np.zeros(len(methyl_starts), dtype=bool)
+            for region_start, region_end in zip(region_starts, region_ends):
+                for i, methyl_start in enumerate(methyl_starts):
+                    if (methyl_start < region_end) and (methyl_start >= region_start):
+                        overlaps[i] = True
 
-            if np.any(valid_positions):
+            if np.any(overlaps):
                 filtered_methylation_dict[chrom] = {
-                    "starts": methylation_data['starts'][valid_positions],
-                    "scores": methylation_data['scores'][valid_positions]
+                    "starts": [start for start, overlap in zip(methylation_data['starts'], overlaps) if overlap],
+                    "scores": [score for score, overlap in zip(methylation_data['scores'], overlaps) if overlap]
                 }
+            else: 
+                ValueError(f"No methylation data from {methylation_path} overlapping with {regions_path}.")
 
         return region_dict, filtered_methylation_dict
