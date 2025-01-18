@@ -1,6 +1,5 @@
 import os
 
-import pandas as pd
 import pytest
 
 from hmmCDR.bed_parser import bed_parser
