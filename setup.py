@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="hmmCDR",
-    version="0.2.7",
+    version="0.3.0",
     description="Find CDR locations using bedmethyl file and CenSat annotations. (REQUIRES BEDTOOLS INSTALLED)",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

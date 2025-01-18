@@ -36,28 +36,32 @@ class calculate_matrices:
         self.x, self.y, self.z = x, y, z
 
     def create_windows(self, regions):
-        windows: Dict[str, np.ndarray] = {}
+        windows: Dict[str, list] = {}
+
+        windows["starts"], windows["ends"] = [], []
 
         for start, end in zip(regions["starts"], regions["ends"]):
-            starts = np.arange(start, end-self.window_size, self.step_size)
+            starts = np.arange(start, end-self.window_size, self.step_size, dtype=int)
             ends = starts + self.window_size
 
-            windows["starts"], windows["ends"] = starts, ends
+            windows["starts"].extend(starts)
+            windows["ends"].extend(ends)
 
         return windows
 
     def mean_methylation_in_windows(self, methylation, windows):
 
-        windows["means"] = np.empty(dtype=float)
+        windows["means"] = np.empty(len(windows["starts"]), dtype=float)
+        methyl_starts = np.array(methylation["starts"], dtype=int)
+        methyl_scores = np.array(methylation["scores"], dtype=float)
 
-        for i, (window_start, window_end) in enumerate(zip(windows["starts"], windows["ends"])):
-            # fetch indices in methylation["starts"] that are within range(window_start, window_end) in vectorized way
-            in_window = (methylation["starts"] >= window_start) & (methylation["starts"] < window_end)
+        for i, (region_start, region_end) in enumerate(zip(windows["starts"], windows["ends"])):
+            overlaps = np.where(np.logical_and(methyl_starts<region_end, methyl_starts>=region_start))
 
-            # Compute the mean methylation score within the window
-            if np.any(in_window):  # If there are methylation scores within the window
-                windows["means"][i] = np.mean(methylation["scores"][in_window])
-            else:  # If no methylation scores fall within the window, assign NaN
+            if len(methyl_scores[overlaps]) > 0:
+                # Calculate mean of scores for overlapping sites
+                windows["means"][i] = np.mean(methyl_scores[overlaps])
+            else:
                 windows["means"][i] = np.nan
 
         return windows
@@ -112,7 +116,7 @@ class calculate_matrices:
                     overlaps[i] = 1
 
         if np.any(overlaps):
-            methylation["prior"] = overlaps
+            methylation["priors"] = overlaps
         else: 
             ValueError(f"No priors found...")
 
@@ -139,14 +143,17 @@ class calculate_matrices:
         # Create contingency table using NumPy for faster computation
         emission_matrix = np.zeros((2, 4))
 
-        for state in [0, 1]:
-            state_indices = [i for i, prior in enumerate(methylation["prior"]) if prior == state]
-            emissions = [emission for i, emission in enumerate(methylation["emission"]) if i in state_indices]
+        methyl_priors = np.array(methylation["priors"], dtype=int)
+        methyl_emissions = np.array(methylation["emissions"], dtype=int)
 
-            for emission in emissions:
+        for state in [0, 1]:
+            state_idx = np.where(methyl_priors == state)
+            emissions_in_state = methyl_emissions[state_idx]
+
+            for emission in emissions_in_state:
                 emission_matrix[state, emission] += 1
 
-            emission_matrix[state, :] = emission_matrix[state, :] / len(emissions)
+            emission_matrix[state, :] = emission_matrix[state, :] / len(emissions_in_state)
 
         # Add a check to ensure rows sum to one (with a small tolerance for floating-point precision)
         assert np.allclose(emission_matrix.sum(axis=1), 1.0, rtol=1e-5), f"Transition matrix rows do not sum to one:\n{emission_matrix}"
@@ -181,8 +188,8 @@ class calculate_matrices:
         return transition_matrix
 
     def priors_single_chromosome(self, chrom, methylation, regions, prior_threshold):
-        windows = self.create_chrom_windows(regions)
-        windows_means = self.mean_within_windows(methylation, windows)
+        windows = self.create_windows(regions)
+        windows_means = self.mean_methylation_in_windows(methylation, windows)
 
         # Find priors using current threshold
         priors = self.find_priors(windows_means, prior_threshold)
@@ -208,7 +215,7 @@ class calculate_matrices:
             )
 
         # add priors on to methylation bedtool
-        methylation_emissions_priors = self.assign_priors(methylation_bedtool=methylation_emissions, priors=priors)
+        methylation_emissions_priors = self.assign_priors(methylation=methylation_emissions, priors=priors)
 
         # calculate emission and transition matrices with assigned priors
         emission_matrix = self.calculate_emission_matrix(methylation_emissions_priors)
@@ -222,7 +229,7 @@ class calculate_matrices:
         methylation_emissions_priors_all_chroms = {}
         emission_matrix_all_chroms = {}
         transition_matrix_all_chroms = {}
-        chromosomes = methylation_emissions_priors_all_chroms.keys()
+        chromosomes = methylation_all_chroms.keys()
 
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {
@@ -242,6 +249,7 @@ class calculate_matrices:
                     emission_matrix,
                     transition_matrix,
                 ) = future.result()
+
                 priors_all_chroms[chrom] = priors
                 windowmeans_all_chroms[chrom] = window_means
                 methylation_emissions_priors_all_chroms[chrom] = methylation_emissions_priors
@@ -270,7 +278,7 @@ def main():
         help='Modification code to filter bedMethyl file (default: "m")',
     )
     argparser.add_argument(
-        "--bedgraph",
+        "--methyl_bedgraph",
         action="store_true",
         default=False,
         help="Flag indicating if the input is a bedgraph. (default: False)",
@@ -289,7 +297,7 @@ def main():
         help='Comma-separated list of satellite types/names to filter CenSat bed file. (default: "active_hor")',
     )
     argparser.add_argument(
-        "--pre_subset_censat",
+        "--regions_prefiltered",
         action="store_true",
         default=False,
         help="Set flag if your annotations bed file is already subset to only the region you desire. (default: False)",
@@ -313,12 +321,6 @@ def main():
         type=float,
         default=20.0,
         help="Threshold for determining if a window is a CDR. Uses value as a percentile of all windows if --prior_use_percentile is passed (default: 30.0)",
-    )
-    argparser.add_argument(
-        "--prior_use_percentile",
-        action="store_true",
-        default=False,
-        help="Whether or not to use percentile when calculating windowing priors. (default: False)",
     )
     argparser.add_argument(
         "--min_prior_size",
@@ -345,27 +347,21 @@ def main():
         help="Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: False)",
     )
     argparser.add_argument(
-        "-w",
-        type=float,
-        default=0.0,
-        help="Threshold of non-zero methylation percentile to be classified as None (default: 0.0)",
-    )
-    argparser.add_argument(
         "-x",
         type=float,
-        default=33.3,
+        default=25,
         help="Threshold of non-zero methylation percentile to be classified as low (default: 33.3)",
     )
     argparser.add_argument(
         "-y",
         type=float,
-        default=66.6,
+        default=50,
         help="Threshold of non-zero methylation percentile to be classified as medium (default: 66.6)",
     )
     argparser.add_argument(
         "-z",
         type=float,
-        default=90.0,
+        default=75,
         help="Threshold of non-zero methylation percentile to be classified as high (default: 100.0)",
     )
 
@@ -375,10 +371,10 @@ def main():
 
     parse_beds = bed_parser(
         mod_code=args.mod_code,
-        bedgraph=args.bedgraph,
+        methyl_bedgraph=args.methyl_bedgraph,
         min_valid_cov=args.min_valid_cov,
         sat_type=sat_types,
-        pre_subset_censat=args.pre_subset_censat,
+        regions_prefiltered=args.regions_prefiltered,
     )
 
     regions_dict, methylation_dict = parse_beds.process_files(
@@ -387,56 +383,42 @@ def main():
     )
 
     priors = calculate_matrices(
-        window_size=args.window_size,
-        step_size=args.window_size,
-        min_prior_size=args.min_prior_size,
+        window_size=args.window_size, step_size=args.window_size,
+        min_prior_size=args.min_prior_size, percentile_emissions=args.percentile_emissions,
         enrichment=args.enrichment,
-        percentile_emissions=args.percentile_emissions,
-        w=args.w,
-        x=args.x,
-        y=args.y,
-        z=args.z,
+        x=args.x, y=args.y, z=args.z,
         output_label=args.output_label,
     )
 
     (
-        priors_chrom_dict,
-        windowmean_chrom_dict,
-        labelled_methylation_chrom_dict,
-        emission_matrix_chrom_dict,
-        transition_matrix_chrom_dict,
-    ) = priors.priors_all_chromosomes(
-        methylation_chrom_dict=methylation_dict,
-        regions_chrom_dict=regions_dict,
-        prior_percentile=args.prior_use_percentile,
-        prior_threshold=args.prior_threshold,
-    )
+        priors_all_chroms,
+        windowmean_all_chroms,
+        methylation_emissions_priors_all_chroms,
+        emission_matrix_all_chroms,
+        transition_matrix_all_chroms,
+    ) = priors.priors_all_chromosomes(methylation_all_chroms=methylation_dict, regions_all_chroms=regions_dict, prior_threshold=args.prior_threshold)
 
-    # Concatenate, sort and save bed files
-    combined_priors = pd.concat(priors_chrom_dict.values(), ignore_index=True)
-    combined_priors = combined_priors.sort_values(
-        by=combined_priors.columns[:2].tolist()
-    )
-    combined_priors.to_csv(
-        f"{output_prefix}_priors.bed", sep="\t", index=False, header=False
-    )
+    def generate_output_bed(all_chroms_dict, output_file, columns=["starts", "ends"]):
+        with open(output_file, 'w') as file: 
+            for chrom in all_chroms_dict:
+                chrom_data = all_chroms_dict[chrom]
+                for i in range(len(all_chroms_dict["starts"])):
+                    for col in columns:
+                       if col in chrom_data:
+                            line.append(str(chrom_data[col][i])) 
+                file.write("\t".join(line) + "\n")
 
-    combined_windowmean = pd.concat(windowmean_chrom_dict.values(), ignore_index=True)
-    combined_windowmean = combined_windowmean.sort_values(
-        by=combined_windowmean.columns[:2].tolist()
-    )
-    combined_windowmean.to_csv(
-        f"{output_prefix}_windowmean.bedgraph", sep="\t", index=False, header=False
-    )
-
+    generate_output_bed(priors_all_chroms, f"{args.output_prefix}_priors.bed", columns=["starts", "ends"])
+    generate_output_bed(priors_all_chroms, f"{args.output_prefix}_windowmean.bedgraph", columns=["starts", "ends"])
+    
     # Save matrices to a text file with key: numpy array representation
-    with open(f"{output_prefix}_emission_matrices.txt", "w") as f:
-        for key, matrix in emission_matrix_chrom_dict.items():
-            f.write(f"{key}: {matrix.tolist()}\n")
+    with open(f"{output_prefix}_emission_matrices.txt", "w") as file:
+        for key, matrix in emission_matrix_all_chroms.items():
+            file.write(f"{key}: {matrix.tolist()}\n")
 
-    with open(f"{output_prefix}_transition_matrices.txt", "w") as f:
-        for key, matrix in transition_matrix_chrom_dict.items():
-            f.write(f"{key}: {matrix.tolist()}\n")
+    with open(f"{output_prefix}_transition_matrices.txt", "w") as file:
+        for key, matrix in transition_matrix_all_chroms.items():
+            file.write(f"{key}: {matrix.tolist()}\n")
 
 
 if __name__ == "__main__":
