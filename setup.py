@@ -18,12 +18,11 @@ setup(
     install_requires=[
         "numpy>=1.21.5",
         "pandas>=1.3.5",
-        "pybedtools>=0.8.1",
         "hmmlearn>=0.3.0",
     ],
     entry_points={
         "console_scripts": [
-            "hmmcdr=hmmCDR.hmmCDR:main",
+            "hmmcdr=hmmCDR.hmmcdr:main",
             "calculate_matrices=hmmCDR.calculate_matrices:main",
         ]
     },

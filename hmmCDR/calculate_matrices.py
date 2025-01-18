@@ -50,7 +50,6 @@ class calculate_matrices:
         return windows
 
     def mean_methylation_in_windows(self, methylation, windows):
-
         windows["means"] = np.empty(len(windows["starts"]), dtype=float)
         methyl_starts = np.array(methylation["starts"], dtype=int)
         methyl_frac_mod = np.array(methylation["fraction_modified"], dtype=float)
