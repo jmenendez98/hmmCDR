@@ -160,7 +160,7 @@ class bed_parser:
             if np.any(overlaps):
                 filtered_methylation_dict[chrom] = {
                     "starts": [start for start, overlap in zip(methylation_data["starts"], overlaps) if overlap],
-                    "ends": [start+1 for start, overlap in zip(methylation_data["starts"], overlaps) if overlap],
+                    "ends": [end for end, overlap in zip(methylation_data["ends"], overlaps) if overlap],
                     "fraction_modified": [frac_mod for frac_mod, overlap in zip(methylation_data["fraction_modified"], overlaps) if overlap]
                 }
             else: 

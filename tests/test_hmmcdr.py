@@ -68,16 +68,15 @@ class TestHMMCDR:
             emission_matrix_chrom_dict,
             transition_matrix_chrom_dict,
         ) = matrix_calculator.priors_all_chromosomes(
-            methylation_chrom_dict=test_data[0],
-            regions_chrom_dict=test_data[1],
-            prior_percentile=False,
-            prior_threshold=20,
+            regions_all_chroms=test_data[0],
+            methylation_all_chroms=test_data[1],
+            prior_threshold=33.3,
         )
 
         (hmm_results_chrom_dict, hmm_scores_chrom_dict) = hmmcdr.hmm_all_chromosomes(
-            labelled_methylation_chrom_dict=labelled_methylation_chrom_dict,
-            emission_matrix_chrom_dict=emission_matrix_chrom_dict,
-            transition_matrix_chrom_dict=transition_matrix_chrom_dict,
+            methylation_emissions_priors_all_chroms=labelled_methylation_chrom_dict,
+            emission_matrix_all_chroms=emission_matrix_chrom_dict,
+            transition_matrix_all_chroms=transition_matrix_chrom_dict,
         )
 
         # Changed from .values to proper dictionary access
@@ -88,9 +87,9 @@ class TestHMMCDR:
 
         # Add more specific assertions about the matrices
         for chrom in hmm_results_chrom_dict:
-            assert isinstance(hmm_results_chrom_dict[chrom], pd.DataFrame)
+            assert isinstance(hmm_results_chrom_dict[chrom],dict)
             # Add assertions about matrix shape or content if known
 
         for chrom in hmm_scores_chrom_dict:
-            assert isinstance(hmm_scores_chrom_dict[chrom], pd.DataFrame)
+            assert isinstance(hmm_scores_chrom_dict[chrom], dict)
             # Add assertions about matrix shape or content if known

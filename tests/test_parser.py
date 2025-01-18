@@ -59,8 +59,6 @@ class TestParser:
         assert list(results.keys())[0] == "chrX_MATERNAL"
         assert len(list(results.keys())) == 1
 
-        print(results["ends"])
-
         assert len(results["chrX_MATERNAL"]["starts"]) == 62064
         assert len(results["chrX_MATERNAL"]["ends"]) == 62064
         assert len(results["chrX_MATERNAL"]["fraction_modified"]) == 62064
