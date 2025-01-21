@@ -13,132 +13,68 @@ from hmmCDR.bed_parser import bed_parser
 class calculate_matrices:
     def __init__(
         self,
-        window_size,
-        step_size,
         min_prior_size,
-        percentile_emissions,
         enrichment,
         output_label,
-        x=25, # anything under 25% methylation
-        y=50, # anything between 25% and 75% methylation
-        z=75, # anything over 75% methylation
+        step_size=10 # how many CpGs on either side to include in prior calculation
     ):
 
-        self.window_size = window_size
         self.step_size = step_size
         self.min_prior_size = min_prior_size
-
-        self.percentile_emissions = percentile_emissions
 
         self.enrichment = enrichment
         self.output_label = output_label
 
-        self.x, self.y, self.z = x, y, z
-
-    def create_windows(self, regions):
-        windows: Dict[str, list] = {}
-
-        windows["starts"], windows["ends"] = [], []
-
-        for start, end in zip(regions["starts"], regions["ends"]):
-            starts = np.arange(start, end-self.window_size, self.step_size, dtype=int)
-            ends = starts + self.window_size
-
-            windows["starts"].extend(starts)
-            windows["ends"].extend(ends)
-
-        return windows
-
-    def mean_methylation_in_windows(self, methylation, windows):
-        windows["means"] = np.empty(len(windows["starts"]), dtype=float)
-        methyl_starts = np.array(methylation["starts"], dtype=int)
-        methyl_frac_mod = np.array(methylation["fraction_modified"], dtype=float)
-
-        for i, (region_start, region_end) in enumerate(zip(windows["starts"], windows["ends"])):
-            overlaps = np.where(np.logical_and(methyl_starts<region_end, methyl_starts>=region_start))
-
-            if len(methyl_frac_mod[overlaps]) > 0:
-                # Calculate mean of fraction for overlapping sites
-                windows["means"][i] = np.mean(methyl_frac_mod[overlaps])
-            else:
-                windows["means"][i] = np.nan
-
-        return windows
-
-    def calculate_window_stats(self, methylation, windows):
-        methyl_starts = np.array(methylation["starts"], dtype=int)
-        methyl_frac_mod = np.array(methylation["fraction_modified"], dtype=float)
-
-        windows["u_stat"] = np.empty(len(windows["starts"]), dtype=float)
-        windows["p_value"] = np.empty(len(windows["starts"]), dtype=float)
-        
-        for i, (region_start, region_end) in enumerate(zip(windows["starts"], windows["ends"])):
-            overlaps = np.where(np.logical_and(methyl_starts<region_end, methyl_starts>=region_start))
-
-            if len(methyl_frac_mod[overlaps]) > 0:
-                u_stat, p_value = mannwhitneyu(methyl_frac_mod, methyl_frac_mod[overlaps], alternative="less" nan_policy="omit")
-                windows["u_stat"][i] = u_stat
-                windows["p_value"][i] = p_value
-            else:
-                windows["u_stat"][i] = np.nan
-                windows["p_value"][i] = np.nan
-
-        return windows
-    
     def calculate_regional_stats(self, methylation):
         methyl_starts = np.array(methylation["starts"], dtype=int)
         methyl_frac_mod = np.array(methylation["fraction_modified"], dtype=float)
 
-        methylation["u_stat"] = [[] for _ in range(len(methylation["starts"]))]
-        methylation["p_value"] = [[] for _ in range(len(methylation["starts"]))]
+        methylation["mannU_p_value"] = [[] for _ in range(len(methylation["starts"]))]
         
         for i in range(len(methyl_starts)-1):
-            start = max(0, i - 10)
-            end = min(len(methyl_starts)-1, i + 10)
+            start = max(0, i - self.step_size)
+            end = min(len(methyl_starts)-1, i + self.step_size)
             current_region_frac_mods = methyl_frac_mod[start:end]
 
-            ks_stat, p_value = mannwhitneyu(methyl_frac_mod, current_region_frac_mods)
+            ks_stat, p_value = mannwhitneyu(current_region_frac_mods, methyl_frac_mod, alternative="less", nan_policy="omit")
             for j in range(start,end+1):
-                methylation["u_stat"][j].append(ks_stat)
-                methylation["p_value"][j].append(p_value)
+                methylation["mannU_p_value"][j].append(p_value)
 
-        methylation["u_stat"] = [np.median(r) for r in methylation["u_stat"]]
-        methylation["p_value"] = [np.median(r) for r in methylation["p_value"]]
+        methylation["mannU_p_value"] = [np.median(r) for r in methylation["mannU_p_value"]]
 
         return methylation
 
-    def get_prior_threshold(self, window_means, percentile):
-        window_means_no_na = window_means["means"].dropna()
-        return np.percentile(window_means_no_na, q=percentile)
-
-    def find_priors(self, windows_means, threshold):
-        prior_windows = [(windows_means["starts"][i], windows_means["ends"][i]) for i, window in enumerate(windows_means["means"]) if window < threshold]
-        
-        prior_windows = sorted(prior_windows)
-        merged = []
-
-        current_start, current_end = prior_windows[0]
-        for start, end in prior_windows[1:]:
-            # Check if current interval overlaps or is adjacent to the next
-            if start <= current_end + 1:
-                # Merge by extending current_end if necessary
-                current_end = max(current_end, end)
-            else:
-                # No overlap or adjacency, add current interval and start new one
-                merged.append((current_start, current_end))
-                current_start, current_end = start, end
-
-        # Add the last interval
-        merged.append((current_start, current_end))
-
-        # filter out priors smaller than size threshold
-        merged_filtered = [(start, end) for start, end in merged if end - start >= self.min_prior_size]
+    def find_priors(self, methylation, p_value_cutoff=0.01):
+        methyl_starts = np.array(methylation["starts"], dtype=int)
+        methyl_p_values = np.array(methylation["mannU_p_value"], dtype=float)
+        methyl_sig = np.array([1 if p <= p_value_cutoff else 0 for p in methyl_p_values])
 
         # create the priors dictionary for the current chromosome
         priors = {"starts": [], "ends": []}
-        for start, end in merged_filtered:
-            priors["starts"].append(start)
-            priors["ends"].append(end)
+
+        priors_idx = np.where(methyl_sig == 1)[0]
+        priors_idx_diff = np.diff(priors_idx)
+        priors_idx_breaks = np.where(priors_idx_diff != 1)[0] + 1 
+        priors_runs = np.split(priors_idx, priors_idx_breaks)
+
+        for run in priors_runs:
+            if len(run) == 0:
+                continue
+
+            min_idx, max_idx = np.min(run), np.max(run)
+            start, end = methyl_starts[min_idx], methyl_starts[max_idx]+1
+            run_length = end - start
+
+            slice_scores = methyl_p_values[min_idx:max_idx+1]
+            if slice_scores.size == 0:
+                continue
+            score = np.median(slice_scores)
+            if np.isnan(score):
+                continue
+
+            if run_length > self.min_prior_size: 
+                priors["starts"].append(start)
+                priors["ends"].append(end)
 
         priors["starts"] = np.array(priors["starts"], dtype=int)
         priors["ends"] = np.array(priors["ends"], dtype=int)
@@ -228,57 +164,29 @@ class calculate_matrices:
 
         return transition_matrix
 
-    def priors_single_chromosome(self, chrom, methylation, regions, prior_threshold):
-        windows = self.create_windows(regions)
-        windows_means = self.mean_methylation_in_windows(methylation, windows)
+    def priors_single_chromosome(self, chrom, methylation, regions):
+        methylation_mannu = self.calculate_regional_stats(methylation)
 
         # Find priors using current threshold
-        priors = self.find_priors(windows_means, prior_threshold)
+        priors = self.find_priors(methylation_mannu)
 
         # assign emissions to methylation bedtool
-        methylation_emissions = self.assign_emissions(methylation)
-
-        windows_means_stats = self.calculate_window_stats(methylation_emissions, windows_means)
-        methylation_emissions = self.calculate_regional_stats(methylation_emissions)
-
-        if all(emission == 0 for emission in methylation_emissions["emissions"]):
-            # If no priors found, adjust threshold
-            print(f"No prior CDRs Found on {chrom} with prior threshold - {prior_threshold}")
-            print(f"Continuing with defaults:\n emission matrix: [[0.002,0.10,0.28,0.60],[0.05,0.85,0.08,0.02]]\ntransition matrix: [[0.9999,0.003],[0.0001,0.997]]")
-            
-            emission_matrix = np.array([[0.008, 0.40, 0.412, 0.18], [0.025, 0.9225, 0.05, 0.0025]])
-            transition_matrix = np.array([[0.9999, 0.0001], [0.0025, 0.9975]])
-
-            return (
-                chrom,
-                priors,
-                windows_means,
-                methylation_emissions,
-                emission_matrix,
-                transition_matrix,
-            )
+        methylation_mannu_emissions = self.assign_emissions(methylation)
 
         # add priors on to methylation bedtool
-        methylation_emissions_priors = self.assign_priors(methylation=methylation_emissions, priors=priors)
+        methylation_mannu_emissions_priors = self.assign_priors(methylation=methylation_mannu_emissions, priors=priors)
 
-        # calculate emission and transition matrices with assigned priors
-        emission_matrix = self.calculate_emission_matrix(methylation_emissions_priors)
-        transition_matrix = self.calculate_transition_matrix(methylation_emissions_priors)
+        return ( chrom, priors, methylation_mannu_emissions_priors)
 
-        return ( chrom, priors, windows_means_stats, methylation_emissions_priors, emission_matrix, transition_matrix )
-
-    def priors_all_chromosomes(self, methylation_all_chroms, regions_all_chroms, prior_threshold):
+    def priors_all_chromosomes(self, methylation_all_chroms, regions_all_chroms):
         priors_all_chroms = {}
-        windowmeans_all_chroms = {}
         methylation_emissions_priors_all_chroms = {}
-        emission_matrix_all_chroms = {}
-        transition_matrix_all_chroms = {}
 
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = {
                 executor.submit(
                     self.priors_single_chromosome,
-                    chrom, methylation_all_chroms[chrom], regions_all_chroms[chrom], prior_threshold,
+                    chrom, methylation_all_chroms[chrom], regions_all_chroms[chrom],
                 ): chrom
                 for chrom in methylation_all_chroms
             }
@@ -287,19 +195,13 @@ class calculate_matrices:
                 (
                     chrom,
                     priors,
-                    window_means,
                     methylation_emissions_priors,
-                    emission_matrix,
-                    transition_matrix,
                 ) = future.result()
 
                 priors_all_chroms[chrom] = priors
-                windowmeans_all_chroms[chrom] = window_means
                 methylation_emissions_priors_all_chroms[chrom] = methylation_emissions_priors
-                emission_matrix_all_chroms[chrom] = emission_matrix
-                transition_matrix_all_chroms[chrom] = transition_matrix
 
-        return priors_all_chroms, windowmeans_all_chroms, methylation_emissions_priors_all_chroms, emission_matrix_all_chroms, transition_matrix_all_chroms
+        return priors_all_chroms, methylation_emissions_priors_all_chroms
 
 
 def main():
@@ -329,7 +231,7 @@ def main():
     argparser.add_argument(
         "--min_valid_cov",
         type=int,
-        default=10,
+        default=1,
         help="Minimum valid coverage to consider a methylation site(read from full modkit pileup files). (default: 10)",
     )
     argparser.add_argument(
@@ -348,27 +250,9 @@ def main():
 
     # calculate_matrices arguments
     argparser.add_argument(
-        "--window_size",
-        type=int,
-        default=1190,
-        help="Window size to calculate prior regions. (default: 1190)",
-    )
-    argparser.add_argument(
-        "--step_size",
-        type=int,
-        default=1190,
-        help="Step size when calculation windows for priors. (default: 1190)",
-    )
-    argparser.add_argument(
-        "--prior_threshold",
-        type=float,
-        default=20.0,
-        help="Threshold for determining if a window is a CDR. Uses value as a percentile of all windows if --prior_use_percentile is passed (default: 30.0)",
-    )
-    argparser.add_argument(
         "--min_prior_size",
         type=int,
-        default=8330,
+        default=1000,
         help="Minimum size for CDR regions. (default: 8330)",
     )
     argparser.add_argument(
@@ -382,30 +266,6 @@ def main():
         type=str,
         default="subCDR",
         help='Label to use for name column of priorCDR BED file. (default: "subCDR")',
-    )
-    argparser.add_argument(
-        "--percentile_emissions",
-        action="store_true",
-        default=False,
-        help="Use values for flags w,x,y,z as raw threshold cutoffs for each emission category. (default: False)",
-    )
-    argparser.add_argument(
-        "-x",
-        type=float,
-        default=25,
-        help="Threshold of non-zero methylation percentile to be classified as low (default: 33.3)",
-    )
-    argparser.add_argument(
-        "-y",
-        type=float,
-        default=50,
-        help="Threshold of non-zero methylation percentile to be classified as medium (default: 66.6)",
-    )
-    argparser.add_argument(
-        "-z",
-        type=float,
-        default=75,
-        help="Threshold of non-zero methylation percentile to be classified as high (default: 100.0)",
     )
 
     args = argparser.parse_args()
@@ -426,20 +286,15 @@ def main():
     )
 
     priors = calculate_matrices(
-        window_size=args.window_size, step_size=args.window_size,
-        min_prior_size=args.min_prior_size, percentile_emissions=args.percentile_emissions,
+        min_prior_size=args.min_prior_size,
         enrichment=args.enrichment,
-        x=args.x, y=args.y, z=args.z,
         output_label=args.output_label,
     )
 
     (
         priors_all_chroms,
-        windowmean_all_chroms,
-        methylation_emissions_priors_all_chroms,
-        emission_matrix_all_chroms,
-        transition_matrix_all_chroms,
-    ) = priors.priors_all_chromosomes(methylation_all_chroms=methylation_dict, regions_all_chroms=regions_dict, prior_threshold=args.prior_threshold)
+        methylation_mannu_emissions_priors_all_chroms,
+    ) = priors.priors_all_chromosomes(methylation_all_chroms=methylation_dict, regions_all_chroms=regions_dict)
 
     def generate_output_bed(all_chroms_dict, output_file, columns=["starts", "ends"]):
         all_lines = []
@@ -457,26 +312,8 @@ def main():
             for line in all_lines: 
                 file.write("\t".join(line) + "\n")
 
-    print(windowmean_all_chroms.keys())
-    print(windowmean_all_chroms)
-
     generate_output_bed(priors_all_chroms, f"{output_prefix}_priors.bed", columns=["starts", "ends"])
-    generate_output_bed(windowmean_all_chroms, f"{output_prefix}_windowmean.bedgraph", columns=["starts", "ends", "means"])
-
-    generate_output_bed(windowmean_all_chroms, f"{output_prefix}_window_ks_stat.bedgraph", columns=["starts", "ends", "ks_stat"])
-    generate_output_bed(windowmean_all_chroms, f"{output_prefix}_window_ks_p-value.bedgraph", columns=["starts", "ends", "p-value"])
-    generate_output_bed(methylation_emissions_priors_all_chroms, f"{output_prefix}_ks_stat.bedgraph", columns=["starts", "ends", "ks_stat"])
-    generate_output_bed(methylation_emissions_priors_all_chroms, f"{output_prefix}_ks_p-value.bedgraph", columns=["starts", "ends", "p-value"])
-
-    # Save matrices to a text file with key: numpy array representation
-    with open(f"{output_prefix}_emission_matrices.txt", "w") as file:
-        for key, matrix in emission_matrix_all_chroms.items():
-            file.write(f"{key}: {matrix.tolist()}\n")
-
-    with open(f"{output_prefix}_transition_matrices.txt", "w") as file:
-        for key, matrix in transition_matrix_all_chroms.items():
-            file.write(f"{key}: {matrix.tolist()}\n")
-
+    generate_output_bed(methylation_mannu_emissions_priors_all_chroms, f"{output_prefix}_mannu.bedgraph", columns=["starts", "ends", "mannU_p_value"])
 
 if __name__ == "__main__":
     main()

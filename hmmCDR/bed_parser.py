@@ -9,7 +9,7 @@ class bed_parser:
     def __init__(
         self,
         mod_code: Optional[str] = None,
-        min_valid_cov: int = 0,
+        min_valid_cov: int = 1,
         methyl_bedgraph: bool = False,
         sat_type: Optional[Union[str, List[str]]] = None,
         edge_filter: int = 10000,
@@ -93,7 +93,7 @@ class bed_parser:
         if not os.path.exists(methylation_path):
             raise FileNotFoundError(f"File not found: {methylation_path}")
         
-        if self.methyl_bedgraph and self.min_valid_cov > 0:
+        if self.methyl_bedgraph and self.min_valid_cov > 1:
             raise ValueError(f"{methylation_path} bedgraph file cannot be filtered by coverage.")
 
         methylation_dict: Dict[str, Dict[str, list]] = {}
