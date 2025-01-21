@@ -29,18 +29,18 @@ class calculate_matrices:
         methyl_starts = np.array(methylation["starts"], dtype=int)
         methyl_frac_mod = np.array(methylation["fraction_modified"], dtype=float)
 
-        methylation["mannU_p_value"] = [[] for _ in range(len(methylation["starts"]))]
+        p_values = np.full(len(methyl_starts), 1.0, dtype=float)
         
-        for i in range(len(methyl_starts)-1):
+        for i in range(len(methyl_starts)):
             start = max(0, i - self.step_size)
-            end = min(len(methyl_starts)-1, i + self.step_size)
+            end = min(len(methyl_starts), i + self.step_size + 1)
+
             current_region_frac_mods = methyl_frac_mod[start:end]
 
-            ks_stat, p_value = mannwhitneyu(current_region_frac_mods, methyl_frac_mod, alternative="less", nan_policy="omit")
-            for j in range(start,end+1):
-                methylation["mannU_p_value"][j].append(p_value)
+            _, p_value = mannwhitneyu(current_region_frac_mods, methyl_frac_mod, alternative="less", nan_policy="omit")
+            p_values[i] = p_value
 
-        methylation["mannU_p_value"] = [np.median(r) for r in methylation["mannU_p_value"]]
+        methylation["mannU_p_value"] = p_values
 
         return methylation
 
