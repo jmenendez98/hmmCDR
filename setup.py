@@ -1,8 +1,8 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="hmmCDR",
-    version="0.3.0",
+    name="mwCDR",
+    version="0.1.0",
     description="Find CDR locations using bedmethyl file and CenSat annotations. (REQUIRES BEDTOOLS INSTALLED)",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -21,8 +21,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "hmmcdr=hmmCDR.hmmcdr:main",
-            "calculate_matrices=hmmCDR.calculate_matrices:main",
+            "mwcdr=mwCDR.mwCDR:main",
         ]
     },
     classifiers=[

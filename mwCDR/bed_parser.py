@@ -29,9 +29,11 @@ class bed_parser:
         self.mod_code = mod_code
         self.min_valid_cov = min_valid_cov
         self.methyl_bedgraph = methyl_bedgraph
+
         self.sat_type = [sat_type] if isinstance(sat_type, str) else (sat_type or [])
         self.edge_filter = edge_filter
         self.regions_prefiltered = regions_prefiltered
+        
         self.temp_dir = tempfile.gettempdir()
 
     def read_and_filter_regions(self, regions_path: str) -> Dict[str, Dict[str, list]]:
@@ -94,7 +96,7 @@ class bed_parser:
             raise FileNotFoundError(f"File not found: {methylation_path}")
         
         if self.methyl_bedgraph and self.min_valid_cov > 1:
-            raise ValueError(f"{methylation_path} bedgraph file cannot be filtered by coverage.")
+            raise ValueError(f"{methylation_path} {self.min_valid_cov} bedgraph file cannot be filtered by coverage.")
 
         methylation_dict: Dict[str, Dict[str, list]] = {}
 
